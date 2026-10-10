@@ -7,7 +7,7 @@ name = "finanzar-backend"
 version = "0.1.0"
 description = "Backend local de FinanzAR Desktop (FastAPI + SQLite + ChromaDB)"
 readme = "README.md"
-license = { text = "MIT" }
+license = { text = "AGPL-3.0-only" }
 requires-python = ">=3.11,<3.13"
 authors = [{ name = "FinanzAR Desktop" }]
 

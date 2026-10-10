@@ -7,7 +7,19 @@ documento resume licencias y obligaciones de atribución.
 
 | Componente | Licencia |
 | --- | --- |
-| FinanzAR Desktop (Rust, React/TS, Python) | MIT |
+| FinanzAR Desktop (Rust, React/TS, Python) | **GNU AGPL-3.0** (`LICENSE`) |
+
+**Por qué AGPL-3.0**: el pipeline de OCR usa **PyMuPDF**, que es AGPL-3.0 (o
+licencia comercial paga). Distribuir el binario con PyMuPDF obliga a liberar el
+código bajo AGPL-3.0. La consecuencia práctica es la buscada: cualquiera que
+redistribuya la app —incluso vendiéndola— debe publicar su código fuente
+completo. Para un producto cerrado habría que comprar la licencia comercial de
+PyMuPDF y acordar otra licencia con el autor.
+
+**Si en el futuro se quiere una licencia más permisiva**: hay que reemplazar
+PyMuPDF por una librería permisiva que también renderice páginas (por ejemplo
+`pypdfium2`, Apache-2.0/BSD-3). Mientras siga PyMuPDF, la app distribuida debe
+ser AGPL-3.0.
 
 ## Modelos
 

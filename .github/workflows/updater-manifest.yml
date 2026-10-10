@@ -2,7 +2,7 @@ name: Updater manifest
 
 on:
   workflow_run:
-    workflows: ["Release macOS"]
+    workflows: ["Release Desktop"]
     types: [completed]
 
 permissions:
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   manifest:
-    name: Publicar latest.json firmado
+    name: Publicar latest.json
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
@@ -22,37 +22,24 @@ jobs:
           path: artifacts
           pattern: finanzar-*
           merge-multiple: true
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Construir el manifiesto del updater
-        id: manifest
+        env:
+          TAG: ${{ github.event.workflow_run.head_branch }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME#v}"
-          python - <<'PY' > latest.json
-          import json, os, pathlib
-          base = pathlib.Path("artifacts")
-          version = os.environ.get("GITHUB_REF_NAME", "0.0.0").lstrip("v")
-          platforms = {}
-          for target in ("aarch64", "x86_64"):
-              archives = list(base.glob(f"**/finanzar-{target}*/**/*.app.tar.gz"))
-              signatures = list(base.glob(f"**/finanzar-{target}*/**/*.app.tar.gz.sig"))
-              if not archives:
-                  continue
-              key = f"darwin-{'aarch64' if target == 'aarch64' else 'x86_64'}"
-              platforms[key] = {
-                  "signature": signatures[0].read_text().strip() if signatures else "",
-                  "url": archives[0].name,
-              }
-          print(json.dumps({
-              "version": version,
-              "notes": "Generado automáticamente por CI. Instalación sujeta a consentimiento del usuario.",
-              "pub_date": "2026-01-01T00:00:00Z",
-              "platforms": platforms,
-          }, indent=2, ensure_ascii=False))
-          PY
+          python3 scripts/build_updater_manifest.py "$TAG" "$REPO" artifacts latest.json
 
       - name: Publicar el manifiesto en el release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.workflow_run.head_branch }}
         run: |
-          gh release upload "${GITHUB_REF_NAME}" latest.json --clobber
+          if [ -f latest.json ]; then
+            gh release upload "$TAG" latest.json --clobber --repo "${GITHUB_REPOSITORY}"
+          else
+            echo "No se generó latest.json (faltan las firmas del updater)."
+          fi
