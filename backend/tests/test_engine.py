@@ -352,3 +352,45 @@ def test_legacy_income_without_account_still_counts(settings):
         assert ctx.engine.consolidated_balance() == to_cents("32000")
     finally:
         ctx.db.close()
+
+
+def test_projection_and_commitments_separate_currencies(settings):
+    """La proyección y los compromisos informan cada moneda aparte."""
+    from finanzar_backend.api.deps import build_context
+
+    ctx = build_context(settings)
+    try:
+        ars = ctx.repo.create_account(
+            new_id("acc"), {"name": "Banco", "currency": "ARS", "opening_balance_cents": to_cents("100000")}
+        )
+        ctx.repo.create_account(
+            new_id("acc"), {"name": "Dólares", "currency": "USD", "opening_balance_cents": to_cents("200")}
+        )
+        ctx.repo.create_recurring_income(
+            new_id("rec"),
+            {
+                "name": "Sueldo",
+                "source": "Sueldo",
+                "kind": "salary",
+                "amount_cents": to_cents("50000"),
+                "account_id": ars["id"],
+                "currency": "ARS",
+                "day_of_month": 1,
+                "start_date": "2026-10-01",
+                "active": True,
+            },
+        )
+        projection = ctx.engine.projection(1, date(2026, 10, 10))
+        assert projection.start_by_currency["ARS"] == to_cents("100000")
+        assert projection.start_by_currency["USD"] == to_cents("200")
+        assert projection.income_by_currency == {"ARS": to_cents("50000")}
+        assert projection.end_by_currency["ARS"] == to_cents("150000")
+        assert projection.end_by_currency["USD"] == to_cents("200")
+        # Los importes de siempre son los de la moneda base.
+        assert projection.end_balance_cents == to_cents("150000")
+
+        commitments = ctx.engine.commitments()
+        assert commitments["installmentsByCurrency"].get("ARS", 0) == commitments["installmentsCents"]
+        assert commitments["subscriptionsByCurrency"].get("ARS", 0) == commitments["subscriptionsCents"]
+    finally:
+        ctx.db.close()

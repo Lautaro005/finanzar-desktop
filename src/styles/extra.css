@@ -1567,7 +1567,9 @@ svg[data-icon] [fill="currentColor"] {
 }
 .chip-list {
   list-style: none;
-  margin: 0 0 12px;
+  /* El margen de arriba separa los tags del subtítulo de la tarjeta (si no, van
+     pegados: esta regla pisa a `.settings-card-heading + *`). */
+  margin: 16px 0 12px;
   padding: 0;
   display: flex;
   flex-wrap: wrap;
@@ -1854,4 +1856,36 @@ svg[data-icon] [fill="currentColor"] {
     min-width: 0;
     width: 100%;
   }
+}
+
+/* --- Walkthrough: progreso por descarga --- */
+.model-card {
+  flex-wrap: wrap;
+}
+.model-progress {
+  flex-basis: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.model-progress-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+}
+.model-progress-head strong {
+  font-weight: 700;
+}
+.model-progress-head span {
+  color: var(--muted, #5b6a62);
+  font-variant-numeric: tabular-nums;
+}
+/* La línea de dólares dentro de la proyección: el estilo del prototipo aplica a
+   todo `span` del bloque y la dejaba en 9 px. */
+.forecast-flow .stat-alt {
+  font-size: 10px;
+  margin-top: 3px;
 }

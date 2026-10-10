@@ -489,6 +489,17 @@ async def patch_recurring_income(request: Request, income_id: str, payload: dict
     return ok({"recurring": income})
 
 
+@router.delete("/api/incomes/recurring/{income_id}")
+async def delete_recurring_income(request: Request, income_id: str) -> Any:
+    """Elimina el ingreso automático. El historial ya acreditado se conserva."""
+    context = ctx(request)
+    if not context.repo.delete_recurring_income(income_id):
+        raise NotFoundError("Ingreso recurrente no encontrado")
+    context.engine.refresh_calendar()
+    refresh_insights(context.engine, period_of(today()))
+    return ok({"deleted": True, "balanceCents": context.engine.consolidated_balance()})
+
+
 @router.patch("/api/incomes/{entry_id}")
 async def patch_income(request: Request, entry_id: str, payload: IncomePatch) -> Any:
     context = ctx(request)

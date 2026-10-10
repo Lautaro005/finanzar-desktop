@@ -182,16 +182,7 @@ function Shell(): JSX.Element {
               <strong>{userName || "Perfil local"}</strong>
               <small>Sin sincronización</small>
             </div>
-          </button>
-          <button
-            type="button"
-            className={`help-link sidebar-settings ${route === "settings" ? "active" : ""}`}
-            onClick={() => go("settings")}
-          >
-            <span className="nav-icon">
-              <Icon name="settings" />
-            </span>
-            <span>Configuración</span>
+            <Icon name="settings" />
           </button>
         </div>
       </aside>

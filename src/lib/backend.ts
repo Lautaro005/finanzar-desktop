@@ -103,6 +103,8 @@ export const api = {
     request<{ recurring: RecurringIncome; applied: IncomeEntry[] }>("POST", "/api/incomes/recurring", payload),
   patchRecurring: (id: string, payload: Record<string, unknown>) =>
     request<{ recurring: RecurringIncome }>("PATCH", `/api/incomes/recurring/${id}`, payload),
+  deleteRecurring: (id: string) =>
+    request<{ deleted: boolean; balanceCents: number }>("DELETE", `/api/incomes/recurring/${id}`),
   patchIncome: (id: string, payload: Record<string, unknown>) =>
     request<{ entry: IncomeEntry; balanceCents: number }>("PATCH", `/api/incomes/${id}`, payload),
   deleteIncome: (id: string) =>

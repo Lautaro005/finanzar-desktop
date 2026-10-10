@@ -11,7 +11,7 @@ import { api } from "../../lib/backend";
 import { formatCents, formatDate } from "../../lib/format";
 import { useAsync } from "../../lib/hooks";
 import { useApp } from "../../app/context";
-import type { IncomeEntry } from "../../types/api";
+import type { IncomeEntry, RecurringIncome } from "../../types/api";
 
 const CURRENCY_OPTIONS = [
   { value: "ARS", label: "Pesos (AR$)" },
@@ -30,6 +30,7 @@ export function Income(): JSX.Element {
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<IncomeEntry | null>(null);
   const [deleting, setDeleting] = useState<IncomeEntry | null>(null);
+  const [deletingRecurring, setDeletingRecurring] = useState<RecurringIncome | null>(null);
 
   const accountList = accounts.data?.accounts ?? [];
   const accountOptions = useMemo(
@@ -101,6 +102,17 @@ export function Income(): JSX.Element {
     }
   };
 
+  const removeRecurring = async (recurring: RecurringIncome) => {
+    try {
+      await api.deleteRecurring(recurring.id);
+      toast(`Ingreso automático «${recurring.name}» eliminado.`);
+      setDeletingRecurring(null);
+      refresh();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "No se pudo borrar", "error");
+    }
+  };
+
   return (
     <>
       <div className="page-heading">
@@ -156,6 +168,12 @@ export function Income(): JSX.Element {
                   >
                     <i />
                   </button>
+                  <RowMenu
+                    label={`Acciones para ${item.name}`}
+                    actions={[
+                      { label: "Borrar", icon: "trash", danger: true, onSelect: () => setDeletingRecurring(item) },
+                    ]}
+                  />
                 </div>
               ))}
             </div>
@@ -282,6 +300,35 @@ export function Income(): JSX.Element {
           }}
           onError={(message) => toast(message, "error")}
         />
+      )}
+
+      {deletingRecurring && (
+        <Modal
+          title="Borrar ingreso automático"
+          eyebrow="Ingresos recurrentes"
+          size="compact"
+          onClose={() => setDeletingRecurring(null)}
+          footer={
+            <>
+              <button type="button" className="secondary-button" onClick={() => setDeletingRecurring(null)}>
+                Cancelar
+              </button>
+              <button type="button" className="danger-button" onClick={() => void removeRecurring(deletingRecurring)}>
+                <Icon name="trash" /> Borrar
+              </button>
+            </>
+          }
+        >
+          <div className="confirm-body">
+            <p className="confirm-copy">
+              ¿Eliminar <strong>{deletingRecurring.name}</strong> por{" "}
+              {formatCents(deletingRecurring.amount_cents, deletingRecurring.currency)} de cada mes?
+            </p>
+            <p className="confirm-note">
+              Deja de acreditarse desde ahora. Los ingresos que ya entraron quedan en el historial.
+            </p>
+          </div>
+        </Modal>
       )}
 
       {deleting && (

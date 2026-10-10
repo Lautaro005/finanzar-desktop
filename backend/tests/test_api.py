@@ -24,6 +24,38 @@ def _error(response):
     return payload["error"]
 
 
+def test_recurring_income_can_be_deleted_and_keeps_history(client) -> None:
+    """Se puede eliminar el sueldo automático, no sólo pausarlo."""
+    account = _data(client.post("/api/accounts", json={"name": "Banco"}))["account"]
+    created = _data(
+        client.post(
+            "/api/incomes/recurring",
+            json={
+                "name": "Sueldo",
+                "amount": "950000,00",
+                "accountId": account["id"],
+                "dayOfMonth": 1,
+                "startDate": "2026-10-01",
+                "active": True,
+            },
+        )
+    )
+    recurring_id = created["recurring"]["id"]
+    assert created["applied"], "el mes en curso se acredita al configurarlo"
+    before = _data(client.get("/api/incomes"))["entries"]
+    assert len(before) == 1
+
+    deleted = _data(client.delete(f"/api/incomes/recurring/{recurring_id}"))
+    assert deleted["deleted"] is True
+
+    after = _data(client.get("/api/incomes"))
+    assert after["recurring"] == []
+    # El historial ya acreditado queda, sin la referencia a la recurrencia.
+    assert len(after["entries"]) == len(before)
+    assert after["entries"][0]["recurring_income_id"] is None
+    assert _error(client.delete(f"/api/incomes/recurring/{recurring_id}"))["code"] == "not_found"
+
+
 def test_health_envelope(client) -> None:
     response = client.get("/health")
     assert response.status_code == 200
