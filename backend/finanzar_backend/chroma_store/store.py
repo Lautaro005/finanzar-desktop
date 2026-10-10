@@ -137,13 +137,14 @@ class MemoryStore:
         self._fallback: _JsonFallbackStore | None = None
         self._embedder: Callable[[str], list[float]] = embedder or embed
         self._embedder_id = embedder_id
+        self._dim_override: int | None = None
         self._marker = self.path / "embedder.json"
         stored = self._read_marker()
         # Un cambio de embedder cambia la dimensión de los vectores: las
         # colecciones viejas no se pueden mezclar, así que se rearman (la memoria
         # se reconstruye la próxima vez que se confirma un resumen).
         self.dim = stored.get("dim") or EMBED_DIM
-        self._dim_mismatch = bool(stored.get("dim")) and int(stored["dim"]) != self._dim_for(self._embedder)
+        self._dim_mismatch = bool(stored.get("dim")) and int(stored["dim"]) != self._effective_dim()
         try:  # pragma: no cover - depende del entorno
             import chromadb  # type: ignore
 
@@ -170,28 +171,50 @@ class MemoryStore:
 
     @staticmethod
     def _dim_for(embedder: Callable[[str], list[float]]) -> int:
-        dim = getattr(embedder, "dimension", None) or getattr(embedder, "dim", None)
-        return int(dim) if dim else EMBED_DIM
+        """Dimensión del embedder, también si pasan un método ligado.
+
+        Un método ligado (``instancia.embed``) no expone ``dimension``: hay que
+        mirar ``__self__``. Sin esto, embeddinggemma-2 se registraba como 256 y
+        sus vectores de 768 se insertaban en una colección de 256 dimensiones.
+        """
+        for target in (embedder, getattr(embedder, "__self__", None)):
+            if target is None:
+                continue
+            dim = getattr(target, "dimension", None) or getattr(target, "dim", None)
+            if dim:
+                return int(dim)
+        return EMBED_DIM
+
+    def _effective_dim(self) -> int:
+        return self._dim_override or self._dim_for(self._embedder)
 
     def _write_marker(self) -> None:
-        self.dim = self._dim_for(self._embedder)
+        self.dim = self._effective_dim()
         self._marker.write_text(
             json.dumps({"embedder": self._embedder_id, "dim": self.dim}), encoding="utf-8"
         )
 
-    def set_embedder(self, embedder: Callable[[str], list[float]], embedder_id: str) -> bool:
+    def set_embedder(
+        self,
+        embedder: Callable[[str], list[float]],
+        embedder_id: str,
+        dim: int | None = None,
+    ) -> bool:
         """Activa un embedder (embeddinggemma). ``True`` si hubo que rearmar.
 
         Si la dimensión cambia, las colecciones existentes quedan inservibles y se
         reconstruyen; los fragmentos vuelven a indexarse al confirmar resúmenes.
+        ``dim`` se puede pasar explícito (recomendado) para no depender de que el
+        callable exponga su dimensión.
         """
         if embedder_id == self._embedder_id:
             return False
         self._embedder = embedder
         self._embedder_id = embedder_id
+        self._dim_override = int(dim) if dim else None
         if self._fallback is not None:
             self._fallback.embedder = embedder
-        changed = self._dim_for(embedder) != self.dim
+        changed = self._effective_dim() != self.dim
         if changed:
             self.reset()
         self._write_marker()
