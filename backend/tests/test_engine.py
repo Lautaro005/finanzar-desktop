@@ -163,6 +163,33 @@ def test_calendar_includes_income_and_due_dates(settings):
         ctx.db.close()
 
 
+def test_no_low_balance_alert_without_accounts(settings):
+    """Una instalación limpia no debe mostrar alertas de saldo bajo."""
+    from finanzar_backend.api.deps import build_context
+    from finanzar_backend.finance.insights import refresh_insights
+
+    ctx = build_context(settings)
+    try:
+        assert ctx.engine.low_balance_alert() is None
+        refresh_insights(ctx.engine, "2026-10")
+        assert [insight for insight in ctx.repo.list_insights() if insight["kind"] == "low_balance"] == []
+    finally:
+        ctx.db.close()
+
+
+def test_low_balance_alert_with_accounts_under_threshold(settings):
+    from finanzar_backend.api.deps import build_context
+
+    ctx = build_context(settings)
+    try:
+        ctx.repo.create_account(new_id("acc"), {"name": "Banco", "opening_balance_cents": to_cents("1000")})
+        alert = ctx.engine.low_balance_alert(threshold_cents=to_cents("100000"))
+        assert alert is not None
+        assert alert["projectedCents"] < alert["thresholdCents"]
+    finally:
+        ctx.db.close()
+
+
 def test_emergency_fund_percent(settings):
     from finanzar_backend.api.deps import build_context
 

@@ -303,6 +303,10 @@ class FinanceEngine:
         return {**fund, "percent": percent, "missingCents": max(0, fund["target_cents"] - fund["saved_cents"])}
 
     def low_balance_alert(self, threshold_cents: int | None = None) -> dict[str, Any] | None:
+        # Sin cuentas cargadas no hay nada que alertar: un saldo proyectado en 0
+        # no significa "saldo bajo", significa que la persona todavía no cargó datos.
+        if not self.repo.list_accounts():
+            return None
         threshold = threshold_cents
         if threshold is None:
             raw = self.repo.get_setting("low_balance_threshold_cents")
