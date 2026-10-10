@@ -255,7 +255,7 @@ class Repository:
         return {"id": entry_id, **data}
 
     def list_income_entries(self, *, from_date: str | None = None, to_date: str | None = None) -> list[dict[str, Any]]:
-        sql = "SELECT * FROM income_entries WHERE user_id = ?"
+        sql = "SELECT * FROM income_entries WHERE user_id = ? AND COALESCE(note, '') != 'Anulado'"
         params: list[Any] = [self.user_id]
         if from_date:
             sql += " AND occurred_on >= ?"
@@ -265,6 +265,46 @@ class Repository:
             params.append(to_date)
         sql += " ORDER BY occurred_on DESC"
         return [_row_to_dict(r) for r in self.db.query(sql, params)]
+
+    def update_income_entry(self, entry_id: str, patch: dict[str, Any]) -> dict[str, Any] | None:
+        allowed = {"source", "kind", "amount_cents", "currency", "occurred_on", "account_id", "note"}
+        fields = {k: v for k, v in patch.items() if k in allowed}
+        if not fields:
+            return self.get_income_entry(entry_id)
+        assignments = ", ".join(f"{k} = ?" for k in fields)
+        values = [*fields.values(), entry_id, self.user_id]
+        self.db.execute(f"UPDATE income_entries SET {assignments} WHERE id = ? AND user_id = ?", values)
+        self.audit("income.update", entity="income_entries", entity_id=entry_id, details=list(fields))
+        return self.get_income_entry(entry_id)
+
+    def get_income_entry(self, entry_id: str) -> dict[str, Any] | None:
+        row = self.db.query_one(
+            "SELECT * FROM income_entries WHERE id = ? AND user_id = ?", (entry_id, self.user_id)
+        )
+        return _row_to_dict(row) if row else None
+
+    def delete_income_entry(self, entry_id: str) -> bool:
+        """Borra un ingreso del historial.
+
+        Los ingresos generados por el sueldo recurrente no se pueden borrar de
+        verdad: el motor los volvería a aplicar. Se anulan (importe 0 y nota
+        ``Anulado``) para que no sumen y no reaparezcan.
+        """
+        entry = self.get_income_entry(entry_id)
+        if entry is None:
+            return False
+        if entry.get("recurring_income_id"):
+            self.update_income_entry(entry_id, {"amount_cents": 0, "note": "Anulado"})
+            self.audit("income.void", entity="income_entries", entity_id=entry_id)
+            return True
+        with self.db.transaction() as conn:
+            cursor = conn.execute(
+                "DELETE FROM income_entries WHERE id = ? AND user_id = ?", (entry_id, self.user_id)
+            )
+        if cursor.rowcount > 0:
+            self.audit("income.delete", entity="income_entries", entity_id=entry_id)
+            return True
+        return False
 
     # -- statements / documents -------------------------------------------
     def create_statement(self, statement_id: str, data: dict[str, Any]) -> dict[str, Any]:
@@ -398,6 +438,18 @@ class Repository:
         self.audit("document.field_patch", entity="statement_fields", entity_id=f"{statement_id}:{field_key}")
         rows = self.list_statement_fields(statement_id)
         return next((f for f in rows if f["field_key"] == field_key), None)
+
+    def clear_statement_extraction(self, statement_id: str) -> None:
+        """Borra lo extraído de un documento para volver a procesarlo sin mezclar."""
+        with self.db.transaction() as conn:
+            for table in ("transactions", "installments", "payments"):
+                conn.execute(
+                    f"DELETE FROM {table} WHERE statement_id = ? AND user_id = ?",
+                    (statement_id, self.user_id),
+                )
+            # `statement_fields` no guarda user_id: cuelga de statements.
+            conn.execute("DELETE FROM statement_fields WHERE statement_id = ?", (statement_id,))
+        self.audit("document.extraction_cleared", entity="statements", entity_id=statement_id)
 
     # -- transactions -----------------------------------------------------
     def insert_transactions(self, rows: Iterable[dict[str, Any]]) -> int:

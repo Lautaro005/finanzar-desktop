@@ -149,8 +149,24 @@ class FinanceEngine:
         return result
 
     def consolidated_balance(self) -> int:
-        """Suma de cuentas activas (no archivadas)."""
-        return sum(a["balance_cents"] for a in self.account_balances())
+        """Balance consolidado de todas las cuentas activas.
+
+        Incluye los ingresos y los pagos que no tienen cuenta asignada: el sueldo
+        recurrente casi nunca trae cuenta, y si esos importes no sumaran el
+        balance quedaría en cero aunque la persona cargue ingresos.
+        """
+        accounts = self.account_balances()
+        total = sum(a["balance_cents"] for a in accounts)
+        account_ids = {a["id"] for a in accounts}
+        for entry in self.repo.list_income_entries():
+            if entry.get("account_id") not in account_ids:
+                total += entry["amount_cents"]
+        cards = {card["id"]: card for card in self.repo.list_cards()}
+        for payment in self.repo.list_payments(status="paid"):
+            card = cards.get(payment.get("card_id") or "")
+            if (card.get("account_id") if card else None) not in account_ids:
+                total -= payment["amount_cents"]
+        return total
 
     def income_for_period(self, period: str) -> int:
         start, end = month_bounds(period)

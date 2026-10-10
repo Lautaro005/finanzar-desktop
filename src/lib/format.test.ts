@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest";
 
-import { formatCents, formatCompact, formatDate, formatDayMonth, monthLabel, percent } from "./format";
+import {
+  ddmmToIso,
+  formatCents,
+  formatCompact,
+  formatDate,
+  formatDayMonth,
+  isoToDdmm,
+  isoToMmYyyy,
+  maskDateInput,
+  maskMonthInput,
+  mmYyyyToPeriod,
+  monthLabel,
+  percent,
+} from "./format";
 
 describe("formatCents", () => {
   it("formatea pesos con dos decimales y separador de miles", () => {
@@ -43,5 +56,30 @@ describe("fechas y períodos", () => {
 
   it("formatea porcentajes", () => {
     expect(percent(21.4)).toBe("21%");
+  });
+
+  it("muestra y lee fechas como dd/mm/aaaa (formato argentino)", () => {
+    expect(isoToDdmm("2026-10-03")).toBe("03/10/2026");
+    expect(ddmmToIso("03/10/2026")).toBe("2026-10-03");
+    expect(ddmmToIso("3/10/26")).toBe("2026-10-03");
+    // Fechas imposibles no pasan.
+    expect(ddmmToIso("31/02/2026")).toBeNull();
+    expect(ddmmToIso("hola")).toBeNull();
+  });
+
+  it("enmascara el tipeo de la fecha con barras", () => {
+    expect(maskDateInput("03102026")).toBe("03/10/2026");
+    expect(maskDateInput("03")).toBe("03");
+    expect(maskDateInput("0310")).toBe("03/10");
+    // Ignora lo que no sean dígitos y corta en 8.
+    expect(maskDateInput("03-10-2026xx")).toBe("03/10/2026");
+  });
+
+  it("muestra y lee períodos como mm/aaaa", () => {
+    expect(isoToMmYyyy("2026-10")).toBe("10/2026");
+    expect(mmYyyyToPeriod("10/2026")).toBe("2026-10");
+    expect(mmYyyyToPeriod("10/26")).toBe("2026-10");
+    expect(mmYyyyToPeriod("13/2026")).toBeNull();
+    expect(maskMonthInput("102026")).toBe("10/2026");
   });
 });

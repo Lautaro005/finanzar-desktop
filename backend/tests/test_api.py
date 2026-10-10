@@ -64,6 +64,30 @@ def test_income_updates_balance(client) -> None:
     assert data["balanceCents"] == 500000
 
 
+def test_income_without_account_still_updates_balance(client) -> None:
+    """El sueldo no trae cuenta: tiene que sumar igual al balance disponible."""
+    data = _data(client.post("/api/incomes", json={"amount": "32000,00", "source": "Sueldo"}))
+    assert data["balanceCents"] == 3_200_000
+
+
+def test_income_edit_and_delete(client) -> None:
+    created = _data(
+        client.post("/api/incomes", json={"amountCents": 150000, "source": "Freelance", "occurredOn": "2026-10-05"})
+    )
+    entry_id = created["entry"]["id"]
+
+    patched = _data(client.patch(f"/api/incomes/{entry_id}", json={"amountCents": 200000, "source": "Freelance II"}))
+    assert patched["entry"]["amount_cents"] == 200000
+    assert patched["entry"]["source"] == "Freelance II"
+    assert patched["balanceCents"] == 200000
+
+    deleted = _data(client.delete(f"/api/incomes/{entry_id}"))
+    assert deleted["deleted"] is True
+    assert deleted["balanceCents"] == 0
+    remaining = _data(client.get("/api/incomes"))["entries"]
+    assert all(entry["id"] != entry_id for entry in remaining)
+
+
 def test_recurring_salary_is_applied(client) -> None:
     account = _data(client.post("/api/accounts", json={"name": "Banco"}))["account"]
     data = _data(

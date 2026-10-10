@@ -3,6 +3,7 @@
 import { useCallback, type JSX } from "react";
 
 import { Icon } from "../../components/Icon";
+import { MonthInput } from "../../components/DateField";
 import { EmptyState, ErrorBlock, LoadingBlock, Panel, ProgressBar, StatusPill } from "../../components/ui";
 import { api } from "../../lib/backend";
 import { formatCents, formatCompact, formatDate, formatDayMonth, monthLabel } from "../../lib/format";
@@ -62,12 +63,7 @@ export function Dashboard(): JSX.Element {
         <div className="heading-actions">
           <div className="period-picker">
             <Icon name="calendar" />
-            <input
-              type="month"
-              value={period}
-              aria-label="Período"
-              onChange={(event) => setPeriod(event.target.value || period)}
-            />
+            <MonthInput value={period} onChange={(next) => setPeriod(next)} ariaLabel="Período" />
           </div>
           <button type="button" className="secondary-button" onClick={() => setChatOpen(true)}>
             <Icon name="spark" /> Preguntarle a la IA

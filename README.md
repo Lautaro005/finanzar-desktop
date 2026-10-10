@@ -83,6 +83,20 @@ cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings &
 npm run build && npm run test
 ```
 
+## Resúmenes, pesos y dólares
+
+Los resúmenes argentinos tienen **dos columnas de importes** (pesos y dólares) y
+cobran percepciones e impuestos **en pesos** por las compras en dólares. La
+extracción usa la posición de cada palabra del PDF (`ocr/layout.py`) para saber a
+qué columna pertenece cada importe, reconoce las percepciones (IVA RG 4240, IIBB
+PERCEP-BSAS, DB.RG 5617, sellos) como movimientos `tax` y descarta el texto legal
+del pie. El copiloto local aporta, con un system prompt específico, los datos que
+la lectura determinista no pudo resolver.
+
+En la pantalla de Documentos, «Revisar campos» abre el PDF real: se resaltan las
+zonas que la IA leyó y se pueden **marcar consumos** arrastrando sobre el
+documento para extraerlos.
+
 ## OCR real con GLM-OCR
 
 El pipeline funciona con dos motores y siempre informa cuál usó:

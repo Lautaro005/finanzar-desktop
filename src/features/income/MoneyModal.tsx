@@ -3,6 +3,7 @@
 import { useMemo, useState, type JSX } from "react";
 
 import { Icon } from "../../components/Icon";
+import { DateInput } from "../../components/DateField";
 import { Select } from "../../components/Select";
 import { Modal } from "../../components/ui";
 import { api } from "../../lib/backend";
@@ -119,7 +120,7 @@ export function MoneyModal({ mode, onClose }: { mode: "income" | "salary"; onClo
         ) : (
           <label>
             <span>Fecha de acreditación</span>
-            <input type="date" value={occurredOn} onChange={(event) => setOccurredOn(event.target.value)} />
+            <DateInput value={occurredOn} onChange={setOccurredOn} />
           </label>
         )}
       </form>

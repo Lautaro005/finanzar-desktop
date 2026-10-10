@@ -128,6 +128,23 @@ const PATHS: Record<string, JSX.Element> = {
   ),
   menu: <path d="M4 7h16M4 12h16M4 17h16" />,
   close: <path d="m6 6 12 12M18 6 6 18" />,
+  eye: (
+    <>
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  ),
+  pencil: (
+    <>
+      <path d="M4 20h4l10-10a2.8 2.8 0 0 0-4-4L4 16z" />
+      <path d="M13.5 6.5 17.5 10.5" />
+    </>
+  ),
+  trash: (
+    <>
+      <path d="M4 7h16M9 7V5h6v2M7 7l1 13h8l1-13M11 11v6M13 11v6" />
+    </>
+  ),
   quote: (
     <path d="M10 11H5a4 4 0 0 0 4 4h1v4H6a5 5 0 0 1-5-5V7a4 4 0 0 1 4-4h5zM23 11h-5a4 4 0 0 0 4 4h1v4h-4a5 5 0 0 1-5-5V7a4 4 0 0 1 4-4h5z" />
   ),

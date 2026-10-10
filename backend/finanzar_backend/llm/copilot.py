@@ -12,7 +12,9 @@ Reglas:
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from ..chroma_store.store import MemoryStore
@@ -26,14 +28,30 @@ logger = logging.getLogger(__name__)
 NO_EVIDENCE = "No tengo datos confirmados suficientes para responder eso."
 
 SYSTEM_PROMPT = (
-    "Sos el copiloto financiero local de FinanzAR. Respondés en español rioplatense, breve y claro. "
+    "Sos el copiloto financiero local de FinanzAR. Respondés en español rioplatense, breve y claro: "
+    "una o dos frases, sin listas ni títulos.\n"
     "El mensaje del usuario incluye una sección EVIDENCIA con datos ya confirmados de la persona: "
-    "esos datos SON reales y suficientes. Usalos para responder y no los contradigas. "
-    "No inventes importes, fechas ni entidades que no estén en la EVIDENCIA. "
+    "esos datos SON reales y suficientes. Usalos para responder y no los contradigas.\n"
+    "Respondé directamente la pregunta con los números de la EVIDENCIA (por ejemplo, si te "
+    "preguntan cuánto tiene que pagar, decí el importe del total a pagar).\n"
+    "No copies ni repitas la sección EVIDENCIA, no enumeres las fuentes una por una y no inventes "
+    "importes, fechas ni entidades que no estén ahí.\n"
     "Solo si la sección EVIDENCIA estuviera vacía respondé exactamente: "
     f"'{NO_EVIDENCE}' "
-    "No das asesoramiento financiero ni recomendás inversiones. "
-    "Cerrá siempre mencionando las fuentes usadas con su id entre corchetes, por ejemplo [balance:total]."
+    "No das asesoramiento financiero ni recomendás inversiones.\n"
+    "Terminá mencionando las fuentes usadas con su id entre corchetes, por ejemplo [balance:total]."
+)
+
+# Formas en que el modelo chico se niega aunque la evidencia exista.
+_REFUSAL_MARKERS = (
+    "no tengo datos",
+    "no tengo suficiente",
+    "no tengo información",
+    "no tengo informacion",
+    "no hay datos",
+    "no puedo responder",
+    "no puedo determinar",
+    "sin datos confirmados",
 )
 
 _INTENTS: dict[str, tuple[str, ...]] = {
@@ -85,6 +103,16 @@ def detect_intents(question: str) -> list[str]:
     lowered = question.lower()
     found = [intent for intent, words in _INTENTS.items() if any(word in lowered for word in words)]
     return found or ["general"]
+
+
+def _model_name(raw: str) -> str:
+    """Nombre legible del modelo: ``llama-server`` devuelve la ruta del .gguf."""
+    if not raw:
+        return "spark"
+    name = Path(raw).name
+    if name.lower().endswith(".gguf"):
+        name = Path(name).stem
+    return name or "spark"
 
 
 class Copilot:
@@ -267,8 +295,9 @@ class Copilot:
         result = self.client.chat(messages, temperature=0.1, max_tokens=400)
         content = (result.content or "").strip()
         # Nunca decir "sin datos" cuando hay evidencia: si el modelo se niega,
-        # se responde con la composición determinística sobre las mismas fuentes.
-        if not content or NO_EVIDENCE.rstrip(".") in content.rstrip(".") or len(content) < 12:
+        # repite la evidencia o responde vacío, se responde con la composición
+        # determinística sobre las mismas fuentes.
+        if self._should_fall_back(content):
             return CopilotAnswer(
                 answer=self._deterministic_answer(question, sources),
                 sources=sources,
@@ -276,12 +305,34 @@ class Copilot:
                 engine="deterministic-after-llm",
             )
         return CopilotAnswer(
-            answer=content,
+            answer=self._clean_answer(content),
             sources=sources,
             evidence_available=True,
-            engine=result.model,
+            engine=_model_name(result.model),
             used_llm=True,
         )
+
+    @staticmethod
+    def _should_fall_back(content: str) -> bool:
+        if not content or len(content) < 12:
+            return True
+        lowered = content.lower()
+        if NO_EVIDENCE.rstrip(".").lower() in lowered:
+            return True
+        if any(marker in lowered for marker in _REFUSAL_MARKERS):
+            return True
+        # El modelo copió la EVIDENCIA en vez de responder: se detecta por la
+        # cantidad de ids entre corchetes.
+        return len(re.findall(r"\[[a-z_]+:", content)) >= 3
+
+    @staticmethod
+    def _clean_answer(content: str) -> str:
+        """Quita markdown suelto para que el widget muestre texto plano prolijo."""
+        cleaned = re.sub(r"^\s*#{1,6}\s*", "", content, flags=re.MULTILINE)
+        cleaned = cleaned.replace("**", "").replace("__", "")
+        cleaned = re.sub(r"^\s*[-*•]\s+", "", cleaned, flags=re.MULTILINE)
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+        return cleaned.strip()
 
     def _deterministic_answer(self, question: str, sources: list[Source]) -> str:
         intents = detect_intents(question)

@@ -2,6 +2,58 @@
 
 Todas las versiones siguen [SemVer](https://semver.org/lang/es/).
 
+## 0.2.0 — 2026-10-10
+
+### Resúmenes, pesos y dólares
+
+- **Extracción por layout**: se usa la posición de cada palabra del PDF para
+  distinguir la **columna de pesos** de la **columna de dólares**. Antes, en
+  cuanto el documento decía "dólares", todos los consumos quedaban marcados como
+  USD.
+- Se leen las **percepciones e impuestos** que se cobran en pesos por las compras
+  en dólares (IVA RG 4240, IIBB PERCEP-BSAS, DB.RG 5617, impuesto de sellos,
+  retenciones) como movimientos de tipo `tax`, y las **devoluciones**
+  (`DEV.IMP.`) con importe negativo.
+- Se ignora el texto legal del pie (planes de cuotas del financiado, comisiones,
+  condiciones, TNA/TEA) que antes entraba como consumo.
+- El extractor del copiloto local ahora tiene un **system prompt** con el
+  contexto de los resúmenes argentinos (dos columnas, percepciones, fechas
+  Día/Mes/Año) y se usa como complemento cuando falta un dato crítico.
+- Volver a correr el OCR **reemplaza** la extracción anterior del documento en
+  lugar de mezclarla con la nueva.
+
+### Documentos
+
+- La revisión abre el **PDF real** (con navegación de páginas) en lugar del
+  recuadro simulado.
+- Se resaltan en verde las zonas que la IA leyó y se pueden **marcar consumos**
+  arrastrando sobre el PDF para que se extraigan; si la zona pisa algo ya leído,
+  no se duplica.
+- El modal muestra los movimientos del resumen y permite recargarlos.
+
+### Balance, calendario e ingresos
+
+- El **balance disponible** incluye los ingresos sin cuenta asignada (el sueldo
+  automático) y los pagos de tarjetas sin cuenta: antes quedaba en cero aunque
+  hubiera ingresos cargados.
+- El **vencimiento** del resumen aparece en el calendario y en "próximos pagos",
+  y la extracción genera el pago del período.
+- El **historial de ingresos** suma editar y borrar por fila (los ingresos del
+  sueldo automático se anulan para que no reaparezcan).
+- Las **suscripciones** reconocen Apple/iTunes y se reflejan en el dashboard.
+
+### Interfaz
+
+- Fechas y períodos en **formato argentino** (`dd/mm/aaaa`, `mm/aaaa`) con campos
+  propios de la app: los campos nativos del navegador se mostraban como
+  `mm/dd/aaaa` en un equipo configurado en inglés.
+- Widget del copiloto: **refresh** para reiniciar la conversación y la **cruz**
+  para cerrar; las respuestas se muestran en párrafos y viñetas, con las fuentes
+  plegadas, y el motor deja de responder "sin datos" cuando hay evidencia
+  (incluidas las negativas del modelo chico con otras palabras).
+- Aire entre el encabezado y el contenido en las tarjetas de Configuración
+  (metas de ahorro).
+
 ## 0.1.0 — 2026-10-10
 
 Primera versión funcional.

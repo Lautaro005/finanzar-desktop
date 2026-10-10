@@ -136,6 +136,37 @@ class GoalCreate(BaseModel):
     targetDate: str | None = None
 
 
+class IncomePatch(BaseModel):
+    amountCents: int | None = None
+    amount: str | None = None
+    source: str | None = None
+    kind: str | None = None
+    accountId: str | None = None
+    currency: str | None = None
+    occurredOn: str | None = None
+    note: str | None = None
+
+
+class RegionExtract(BaseModel):
+    page: int = 1
+    regions: list[list[float]] = Field(default_factory=list)
+
+
+class DocumentTransactionCreate(BaseModel):
+    occurredOn: str
+    description: str
+    amountCents: int | None = None
+    amount: str | None = None
+    currency: str = "ARS"
+    kind: str = "purchase"
+    page: int | None = None
+    bbox: list[float] | None = None
+
+
+class DocumentTransactionsBody(BaseModel):
+    transactions: list[DocumentTransactionCreate] = Field(default_factory=list)
+
+
 class CopilotChat(BaseModel):
     question: str
     month: str | None = None
@@ -420,6 +451,34 @@ async def patch_recurring_income(request: Request, income_id: str, payload: dict
     return ok({"recurring": income})
 
 
+@router.patch("/api/incomes/{entry_id}")
+async def patch_income(request: Request, entry_id: str, payload: IncomePatch) -> Any:
+    context = ctx(request)
+    patch: dict[str, Any] = {
+        "source": payload.source,
+        "kind": payload.kind,
+        "currency": payload.currency,
+        "occurred_on": payload.occurredOn,
+        "account_id": payload.accountId,
+        "note": payload.note,
+    }
+    if payload.amountCents is not None or payload.amount is not None:
+        patch["amount_cents"] = _money(payload.amountCents, payload.amount)
+    patch = {k: v for k, v in patch.items() if v is not None}
+    entry = context.repo.update_income_entry(entry_id, patch)
+    if entry is None:
+        raise NotFoundError("Ingreso no encontrado")
+    return ok({"entry": entry, "balanceCents": context.engine.consolidated_balance()})
+
+
+@router.delete("/api/incomes/{entry_id}")
+async def delete_income(request: Request, entry_id: str) -> Any:
+    context = ctx(request)
+    if not context.repo.delete_income_entry(entry_id):
+        raise NotFoundError("Ingreso no encontrado")
+    return ok({"deleted": True, "balanceCents": context.engine.consolidated_balance()})
+
+
 # --- dashboard ----------------------------------------------------------
 @router.get("/api/dashboard")
 async def dashboard(request: Request, month: str | None = None) -> Any:
@@ -500,6 +559,9 @@ async def import_document(request: Request, file: UploadFile = File(...)) -> Any
 @router.post("/api/documents/{document_id}/ocr")
 async def document_ocr(request: Request, document_id: str, prefer: str = "auto") -> Any:
     context = ctx(request)
+    # El copiloto local se usa como complemento del extractor (system prompt con
+    # el contexto de los resúmenes argentinos).
+    context.pipeline.llm_client = context.llama_client
     result = await context.pipeline.run_ocr(document_id, prefer=prefer)
     return ok(result)
 
@@ -512,6 +574,74 @@ async def document_review(request: Request, document_id: str) -> Any:
         tx for tx in review["transactions"] if tx.get("statement_id") == document_id
     ]
     return ok(review)
+
+
+@router.get("/api/documents/{document_id}/page")
+async def document_page(request: Request, document_id: str, page: int = 1, dpi: int = 150) -> Any:
+    """Imagen de una página del PDF importado, como data URL.
+
+    Se devuelve en base64 dentro del envelope para que la ventana de la app la
+    muestre sin pedir un binario aparte al puente de Tauri.
+    """
+    import base64
+
+    from ..ocr import pdf as pdf_mod
+
+    context = ctx(request)
+    png, width, height = context.pipeline.page_image(document_id, page=page, dpi=dpi)
+    statement = context.repo.get_statement(document_id)
+    page_count = 0
+    if statement:
+        try:
+            page_count = pdf_mod.page_count(Path(statement["stored_path"]))
+        except Exception:
+            page_count = 0
+    image_width, image_height = 0, 0
+    with contextlib.suppress(Exception):  # pragma: no cover - PNG siempre válido
+        image_width, image_height = _png_size(png)
+    return ok(
+        {
+            "page": page,
+            "pageCount": page_count,
+            "width": width,
+            "height": height,
+            "imageWidth": image_width,
+            "imageHeight": image_height,
+            "dataUrl": "data:image/png;base64," + base64.b64encode(png).decode("ascii"),
+        }
+    )
+
+
+def _png_size(png: bytes) -> tuple[int, int]:
+    """Ancho y alto de un PNG leyendo su cabecera IHDR."""
+    import struct
+
+    if len(png) < 24 or png[:8] != b"\x89PNG\r\n\x1a\n":
+        raise ValueError("No es un PNG")
+    width, height = struct.unpack(">II", png[16:24])
+    return int(width), int(height)
+
+
+@router.post("/api/documents/{document_id}/extract-regions")
+async def document_extract_regions(request: Request, document_id: str, payload: RegionExtract) -> Any:
+    """Lee las regiones que marcó la persona y agrega esos consumos."""
+    context = ctx(request)
+    result = await context.pipeline.extract_regions(document_id, payload.page, payload.regions)
+    result["transactions"] = [
+        tx for tx in result.get("transactions", []) if tx.get("statement_id") == document_id
+    ]
+    return ok(result)
+
+
+@router.post("/api/documents/{document_id}/transactions")
+async def document_add_transactions(
+    request: Request, document_id: str, payload: DocumentTransactionsBody
+) -> Any:
+    """Agrega movimientos cargados a mano al documento."""
+    context = ctx(request)
+    items = [item.model_dump() for item in payload.transactions]
+    rows = context.pipeline.add_transactions(document_id, items)
+    return ok({"transactions": [tx for tx in rows if tx.get("statement_id") == document_id]})
 
 
 @router.patch("/api/documents/{document_id}/fields")
