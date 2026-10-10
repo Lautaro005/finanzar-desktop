@@ -102,6 +102,19 @@ export interface Transaction {
   kind: string;
   confirmed: number;
   confidence: number | null;
+  source_page?: number | null;
+  source_bbox?: number[] | null;
+}
+
+/** Imagen de una página del PDF importado, con su tamaño para ubicar bboxes. */
+export interface DocumentPageImage {
+  page: number;
+  pageCount: number;
+  width: number;
+  height: number;
+  imageWidth: number;
+  imageHeight: number;
+  dataUrl: string;
 }
 
 export interface Installment {

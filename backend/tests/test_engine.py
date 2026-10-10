@@ -70,6 +70,51 @@ def test_balance_reflects_paid_payment_only(settings):
         ctx.db.close()
 
 
+def test_balance_includes_income_without_account(settings):
+    """El sueldo y los ingresos sin cuenta asignada también mueven el balance."""
+    from finanzar_backend.api.deps import build_context
+
+    ctx = build_context(settings)
+    try:
+        ctx.repo.create_account(new_id("acc"), {"name": "Banco", "opening_balance_cents": 0})
+        ctx.repo.upsert_income_entry(
+            new_id("inc"),
+            {"source": "Freelance", "amount_cents": to_cents("120000"), "occurred_on": "2026-10-05"},
+        )
+        assert ctx.engine.consolidated_balance() == to_cents("120000")
+    finally:
+        ctx.db.close()
+
+
+def test_deleting_recurring_income_voids_it_without_recreating(settings):
+    """Borrar el sueldo aplicado lo anula: no suma ni vuelve a aparecer."""
+    from finanzar_backend.api.deps import build_context
+
+    ctx = build_context(settings)
+    try:
+        ctx.repo.create_recurring_income(
+            new_id("rec"),
+            {
+                "name": "Sueldo",
+                "kind": "salary",
+                "amount_cents": to_cents("300000"),
+                "day_of_month": 1,
+                "start_date": "2026-01-01",
+            },
+        )
+        applied = ctx.engine.apply_recurring_income(date(2026, 10, 9))
+        assert len(applied) == 1
+        assert ctx.engine.consolidated_balance() == to_cents("300000")
+
+        assert ctx.repo.delete_income_entry(applied[0]["id"]) is True
+        assert ctx.engine.consolidated_balance() == 0
+        # No se vuelve a aplicar en el siguiente refresco ni aparece en el historial.
+        assert ctx.engine.apply_recurring_income(date(2026, 10, 9)) == []
+        assert ctx.repo.list_income_entries() == []
+    finally:
+        ctx.db.close()
+
+
 def test_projection_does_not_double_count_installments(settings):
     from finanzar_backend.api.deps import build_context
 

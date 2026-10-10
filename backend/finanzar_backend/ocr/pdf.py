@@ -94,3 +94,98 @@ def page_blocks(pdf_path: Path, max_pages: int = 40) -> list[dict]:
                     }
                 )
     return output
+
+
+@dataclass
+class PageWords:
+    """Palabras con coordenadas: permite reconstruir las columnas del resumen."""
+
+    number: int  # 1-indexado
+    width: float
+    height: float
+    words: list[dict[str, object]]
+
+
+def words_pages(pdf_path: Path, max_pages: int = 40) -> list[PageWords]:
+    """Palabras con bbox por página (coordenadas en puntos PDF).
+
+    Se agrupan por (bloque, línea) para reconstruir cada renglón del resumen y
+    distinguir la columna de pesos de la de dólares por posición horizontal.
+    """
+    fitz = _import_fitz()
+    pages: list[PageWords] = []
+    with fitz.open(str(pdf_path)) as doc:
+        for index, page in enumerate(doc):
+            if index >= max_pages:
+                break
+            rect = page.rect
+            words: list[dict[str, object]] = []
+            for x0, y0, x1, y1, text, block_no, line_no, word_no in page.get_text("words"):
+                cleaned = str(text).strip()
+                if not cleaned:
+                    continue
+                words.append(
+                    {
+                        "text": cleaned,
+                        "x0": round(float(x0), 1),
+                        "y0": round(float(y0), 1),
+                        "x1": round(float(x1), 1),
+                        "y1": round(float(y1), 1),
+                        "block": int(block_no),
+                        "line": int(line_no),
+                        "index": int(word_no),
+                    }
+                )
+            pages.append(
+                PageWords(number=index + 1, width=float(rect.width), height=float(rect.height), words=words)
+            )
+    return pages
+
+
+def page_text_in_rect(pdf_path: Path, page_number: int, rect: tuple[float, float, float, float]) -> str:
+    """Texto nativo dentro de un rectángulo (puntos PDF) de una página."""
+    fitz = _import_fitz()
+    with fitz.open(str(pdf_path)) as doc:
+        if not 1 <= page_number <= doc.page_count:
+            return ""
+        page = doc[page_number - 1]
+        return page.get_text("text", clip=fitz.Rect(*rect))
+
+
+def page_png(pdf_path: Path, page_number: int, dpi: int = 150) -> tuple[bytes, int, int]:
+    """PNG de una página a cierta resolución, con su ancho y alto en píxeles."""
+    fitz = _import_fitz()
+    with fitz.open(str(pdf_path)) as doc:
+        if not 1 <= page_number <= doc.page_count:
+            raise ValueError(f"La página {page_number} no existe")
+        page = doc[page_number - 1]
+        pixmap = page.get_pixmap(matrix=fitz.Matrix(dpi / 72.0, dpi / 72.0), alpha=False)
+        return pixmap.tobytes("png"), pixmap.width, pixmap.height
+
+
+def page_size(pdf_path: Path, page_number: int) -> tuple[float, float]:
+    """Tamaño de una página en puntos PDF (para mapear bbox a píxeles)."""
+    fitz = _import_fitz()
+    with fitz.open(str(pdf_path)) as doc:
+        if not 1 <= page_number <= doc.page_count:
+            raise ValueError(f"La página {page_number} no existe")
+        rect = doc[page_number - 1].rect
+        return float(rect.width), float(rect.height)
+
+
+def render_region(
+    pdf_path: Path, page_number: int, rect: tuple[float, float, float, float], dpi: int = 300
+) -> RenderedPage | None:
+    """Recorta un rectángulo (puntos PDF) de una página como PNG."""
+    fitz = _import_fitz()
+    with fitz.open(str(pdf_path)) as doc:
+        if not 1 <= page_number <= doc.page_count:
+            return None
+        page = doc[page_number - 1]
+        clip = fitz.Rect(*rect) & page.rect
+        if clip.is_empty:
+            return None
+        pixmap = page.get_pixmap(matrix=fitz.Matrix(dpi / 72.0, dpi / 72.0), clip=clip, alpha=False)
+        return RenderedPage(
+            number=page_number, png=pixmap.tobytes("png"), width=pixmap.width, height=pixmap.height
+        )

@@ -13,6 +13,7 @@ import type {
   CopilotAnswer,
   CreditCard,
   Dashboard,
+  DocumentPageImage,
   IncomeEntry,
   Insight,
   Installment,
@@ -101,6 +102,10 @@ export const api = {
     request<{ recurring: RecurringIncome; applied: IncomeEntry[] }>("POST", "/api/incomes/recurring", payload),
   patchRecurring: (id: string, payload: Record<string, unknown>) =>
     request<{ recurring: RecurringIncome }>("PATCH", `/api/incomes/recurring/${id}`, payload),
+  patchIncome: (id: string, payload: Record<string, unknown>) =>
+    request<{ entry: IncomeEntry; balanceCents: number }>("PATCH", `/api/incomes/${id}`, payload),
+  deleteIncome: (id: string) =>
+    request<{ deleted: boolean; balanceCents: number }>("DELETE", `/api/incomes/${id}`),
 
   documents: () => request<{ documents: Statement[] }>("GET", "/api/documents"),
   importDocument: async (path: string): Promise<{ document: Statement }> => {
@@ -118,6 +123,18 @@ export const api = {
     request<{ fields: StatementField[] }>("PATCH", `/api/documents/${id}/fields`, { fields }),
   confirmDocument: (id: string) =>
     request<{ statement: Statement; indexedChunks: number }>("POST", `/api/documents/${id}/confirm`),
+  documentPage: (id: string, page = 1, dpi = 150) =>
+    request<DocumentPageImage>("GET", `/api/documents/${id}/page?page=${page}&dpi=${dpi}`),
+  extractRegions: (id: string, page: number, regions: number[][]) =>
+    request<{ transactions: Transaction[]; engine: string; regions: number }>(
+      "POST",
+      `/api/documents/${id}/extract-regions`,
+      { page, regions },
+    ),
+  addDocumentTransactions: (
+    id: string,
+    transactions: Array<Record<string, unknown>>,
+  ) => request<{ transactions: Transaction[] }>("POST", `/api/documents/${id}/transactions`, { transactions }),
 
   transactions: (params: { month?: string; cardId?: string; kind?: string } = {}) => {
     const query = new URLSearchParams();

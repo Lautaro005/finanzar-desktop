@@ -812,6 +812,251 @@ svg[data-icon] [fill="currentColor"] {
   margin-top: 16px;
 }
 
+/* Las tarjetas de Configuración usan su propio encabezado: el contenido que las
+   sigue tampoco puede quedar pegado al subtítulo (metas de ahorro). */
+.settings-card-heading + * {
+  margin-top: 16px;
+}
+.settings-card-heading + .stack-list,
+.settings-card-heading + .stack-form {
+  margin-top: 16px;
+}
+
+/* --- Menú de fila (editar / borrar) --- */
+.row-menu {
+  position: relative;
+  display: inline-flex;
+  justify-content: flex-end;
+}
+.row-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+}
+.row-menu-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 21;
+  min-width: 150px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--surface, #fff);
+  border: 1px solid var(--line, #e2e7e3);
+  box-shadow: 0 14px 30px rgba(15, 40, 28, 0.14);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.row-menu-list button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.row-menu-list button:hover {
+  background: rgba(20, 97, 63, 0.08);
+}
+.row-menu-list .row-menu-danger {
+  color: #a4322a;
+}
+.row-menu-list svg[data-icon] {
+  width: 15px;
+  height: 15px;
+}
+
+.danger-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid #c9403a;
+  background: #c9403a;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.danger-button:hover {
+  background: #ad332d;
+}
+.confirm-copy {
+  margin: 4px 0 0;
+  line-height: 1.5;
+}
+.confirm-note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--muted, #5b6a62);
+}
+
+/* --- Visor del PDF en la revisión --- */
+.pdf-viewer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+}
+.pdf-viewer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--muted, #5b6a62);
+}
+.pdf-surface {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line, #e2e7e3);
+  background: #fff;
+  touch-action: none;
+  cursor: crosshair;
+  user-select: none;
+}
+.pdf-surface img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+}
+.pdf-highlight,
+.pdf-mark {
+  position: absolute;
+  border-radius: 3px;
+  pointer-events: none;
+}
+.pdf-highlight {
+  background: rgba(52, 168, 118, 0.22);
+  border: 1px solid rgba(20, 97, 63, 0.5);
+}
+.pdf-mark {
+  background: rgba(240, 176, 44, 0.2);
+  border: 1.5px solid #c98a12;
+  pointer-events: auto;
+}
+.pdf-mark.drawing {
+  background: rgba(240, 176, 44, 0.12);
+  border-style: dashed;
+}
+.pdf-mark button {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid #c98a12;
+  background: #fff;
+  color: #c98a12;
+  cursor: pointer;
+  padding: 0;
+}
+.pdf-mark button svg[data-icon] {
+  width: 11px;
+  height: 11px;
+}
+.pdf-viewer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.pdf-viewer-actions .ghost-button.active {
+  color: #14613f;
+  border-color: rgba(20, 97, 63, 0.4);
+}
+.pdf-viewer-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted, #5b6a62);
+}
+
+/* --- Movimientos dentro de la revisión --- */
+.doc-movements {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.doc-movements li {
+  display: grid;
+  grid-template-columns: 84px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--line, #e2e7e3);
+  border-radius: 10px;
+  font-size: 13px;
+}
+.doc-movement-date {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted, #5b6a62);
+}
+.doc-movement-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.doc-movement-copy strong {
+  overflow-wrap: anywhere;
+}
+.doc-movement-copy small {
+  color: var(--muted, #5b6a62);
+  font-size: 11px;
+}
+.doc-movement-amount {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* --- Respuestas del copiloto --- */
+.answer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.answer-body p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.answer-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.source-details {
+  margin-top: 8px;
+  font-size: 12px;
+}
+.source-details summary {
+  cursor: pointer;
+  color: #14613f;
+}
+.source-list li {
+  overflow-wrap: anywhere;
+}
+
 /* Separador de configuración: sólo el aire superior, el ritmo lo da el gap. */
 .settings-divider {
   margin: 8px 0 0;

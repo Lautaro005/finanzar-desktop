@@ -6,17 +6,19 @@ Nada se indexa en la memoria semántica hasta que el usuario confirma.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
 from ..chroma_store.store import MemoryStore
 from ..config import Settings
-from ..core.errors import ConflictError, NotFoundError
+from ..core.errors import ConflictError, NotFoundError, ValidationError
 from ..core.events import EventBus
 from ..core.ids import new_id
-from ..core.money import cents_to_str
+from ..core.money import cents_to_str, to_cents
 from ..db.repo import Repository
 from ..db.sqlite import utcnow
 from ..finance.engine import FinanceEngine, period_of, today
@@ -32,24 +34,29 @@ def checksum_bytes(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
+def _norm_description(description: str) -> str:
+    """Descripción comparable (solo alfanuméricos, minúsculas)."""
+    return re.sub(r"[^0-9a-záéíóúñ]+", "", description.lower())
+
+
 def _dedupe_transactions(items: list[Any]) -> list[Any]:
     """Elimina movimientos repetidos que el OCR puede devolver dos veces.
 
     Normaliza la descripción (solo alfanuméricos, minúsculas) y le quita
     puntuación colgante, para que variantes como ``Cuota notebook`` y
     ``Cuota notebook /`` colapsen en una sola. Se conserva la descripción más
-    informativa (la más larga).
+    informativa (la más larga). La moneda forma parte de la clave: un consumo en
+    dólares y su percepción en pesos suelen compartir fecha e importe y **no**
+    son el mismo movimiento.
     """
-    import re as _re
-
-    seen: dict[tuple[str, int, str], Any] = {}
+    seen: dict[tuple[str, int, str, str], Any] = {}
     for item in items:
-        cleaned = _re.sub(r"\s+", " ", item.description.strip())
-        cleaned = _re.sub(r"[\s\-·:|/.,]+$", "", cleaned)
+        cleaned = re.sub(r"\s+", " ", item.description.strip())
+        cleaned = re.sub(r"[\s\-·:|/.,]+$", "", cleaned)
         if cleaned:
             item.description = cleaned
-        normalized = _re.sub(r"[^0-9a-záéíóúñ]+", "", item.description.lower())
-        key = (item.occurred_on, item.amount_cents, normalized)
+        normalized = _norm_description(item.description)
+        key = (item.occurred_on, item.amount_cents, normalized, str(getattr(item, "currency", "ARS")))
         current = seen.get(key)
         if current is None or len(item.description) > len(current.description):
             seen[key] = item
@@ -70,6 +77,9 @@ class DocumentPipeline:
         self.engine = engine
         self.memory = memory
         self.bus = bus
+        # Cliente del copiloto local; se inyecta desde el contexto cuando el
+        # runtime está disponible (se usa solo como complemento de la lectura).
+        self.llm_client: Any = None
 
     # -- almacenamiento ---------------------------------------------------
     def _store_original(self, content: bytes, filename: str, checksum: str) -> Path:
@@ -144,8 +154,25 @@ class DocumentPipeline:
             page_texts = engine.run(pages)
             await self.bus.update_job(job, progress=0.6, message="Extrayendo datos estructurados")
 
-            extracted = extract_mod.extract_heuristic(page_texts)
-            extracted.engine = engine.name
+            # El extractor por layout usa las coordenadas del PDF para separar la
+            # columna de pesos de la de dólares. Si el PDF es escaneado (sin capa
+            # de texto) no hay coordenadas y se cae al texto del OCR.
+            extracted = extract_mod.extract_layout(stored)
+            if extracted is None:
+                extracted = extract_mod.extract_heuristic(page_texts)
+            elif self._missing_critical(extracted):
+                # El layout leyó los movimientos pero no el encabezado (etiquetas
+                # distintas según el banco): se completa con la lectura por texto.
+                extracted = extract_mod.merge_missing(extracted, extract_mod.extract_heuristic(page_texts))
+            extracted.engine = engine.name if extracted.engine == "heuristic" else f"{engine.name}+layout"
+
+            # Complemento con el copiloto local y el system prompt de resúmenes
+            # argentinos: solo cuando falta información crítica y el runtime está.
+            if self.llm_client is not None and self._missing_critical(extracted):
+                await self.bus.update_job(job, progress=0.72, message="Completando con el copiloto local")
+                extra = await asyncio.to_thread(extract_mod.extract_with_llm, self.llm_client, page_texts)
+                if extra is not None:
+                    extracted = extract_mod.merge_missing(extracted, extra)
 
             self._persist_extraction(statement_id, extracted)
             self._persist_payments(statement_id, extracted)
@@ -181,6 +208,15 @@ class DocumentPipeline:
         field = extracted.field_map().get(key)
         return field.value if field else None
 
+    @staticmethod
+    def _missing_critical(extracted: extract_mod.ExtractedStatement) -> bool:
+        """¿Falta algún dato sin el cual el resumen queda incompleto?"""
+        fields = extracted.field_map()
+        for key in ("due_date", "total", "minimum"):
+            if key not in fields or fields[key].value is None:
+                return True
+        return not (extracted.transactions or extracted.installments or extracted.subscriptions)
+
     def _period_from(self, extracted: extract_mod.ExtractedStatement) -> str | None:
         due = self._field_value(extracted, "due_date")
         if due:
@@ -188,6 +224,9 @@ class DocumentPipeline:
         return None
 
     def _persist_extraction(self, statement_id: str, extracted: extract_mod.ExtractedStatement) -> None:
+        # Volver a correr el OCR no debe duplicar ni mezclar datos del intento
+        # anterior: se limpia la extracción previa del documento.
+        self.repo.clear_statement_extraction(statement_id)
         for field in extracted.fields:
             self.repo.upsert_statement_field(
                 new_id("fld"),
@@ -205,10 +244,13 @@ class DocumentPipeline:
                     "status": "pending",
                 },
             )
-        # El OCR puede devolver la misma línea dos veces; se deduplica antes de guardar.
-        extracted.transactions = _dedupe_transactions(extracted.transactions)
-        extracted.installments = _dedupe_transactions(extracted.installments)
-        extracted.subscriptions = _dedupe_transactions(extracted.subscriptions)
+        # El OCR puede devolver la misma línea dos veces; se deduplica antes de
+        # guardar. La extracción por layout, en cambio, lee las filas reales del
+        # PDF: si el resumen lista dos veces una percepción idéntica, se conserva.
+        if "layout" not in extracted.engine:
+            extracted.transactions = _dedupe_transactions(extracted.transactions)
+            extracted.installments = _dedupe_transactions(extracted.installments)
+            extracted.subscriptions = _dedupe_transactions(extracted.subscriptions)
 
         rows = []
         for tx in [*extracted.transactions, *extracted.installments, *extracted.subscriptions]:
@@ -286,6 +328,145 @@ class DocumentPipeline:
         )
 
     # -- revisión y confirmación -----------------------------------------
+    def page_image(self, statement_id: str, page: int = 1, dpi: int = 150) -> tuple[bytes, float, float]:
+        """PNG de una página del PDF y su tamaño en puntos (para mapear bboxes)."""
+        statement = self.repo.get_statement(statement_id)
+        if not statement:
+            raise NotFoundError("Documento no encontrado")
+        stored = Path(statement["stored_path"])
+        if not stored.exists():
+            raise NotFoundError("El PDF original ya no está disponible")
+        png, _, _ = pdf_mod.page_png(stored, page, dpi=dpi)
+        width, height = pdf_mod.page_size(stored, page)
+        return png, width, height
+
+    def preview_text(self, statement_id: str, page: int, rect: tuple[float, float, float, float]) -> str:
+        """Texto nativo dentro de una región: lectura instantánea sin OCR."""
+        statement = self.repo.get_statement(statement_id)
+        if not statement:
+            raise NotFoundError("Documento no encontrado")
+        stored = Path(statement["stored_path"])
+        try:
+            return pdf_mod.page_text_in_rect(stored, page, rect)
+        except Exception:
+            return ""
+
+    async def extract_regions(
+        self, statement_id: str, page: int, regions: list[list[float]], prefer: str = "auto"
+    ) -> dict[str, Any]:
+        """Lee las regiones que marcó la persona y agrega esos consumos.
+
+        Primero intenta el texto nativo del PDF (exacto y rápido) y, si la
+        región no tiene capa de texto, cae al motor de OCR.
+        """
+        statement = self.repo.get_statement(statement_id)
+        if not statement:
+            raise NotFoundError("Documento no encontrado")
+        stored = Path(statement["stored_path"])
+        if not stored.exists():
+            raise NotFoundError("El PDF original ya no está disponible")
+        if not regions:
+            raise ValidationError("Marcá al menos una región del documento")
+
+        # Movimientos que ya tiene el documento: marcar una zona que pisa un
+        # consumo ya leído no debe duplicarlo. Se compara por fecha, importe,
+        # moneda y tipo, porque el recorte de la zona puede cortar la descripción.
+        existing = {
+            (tx["occurred_on"], tx["amount_cents"], tx["currency"], tx["kind"])
+            for tx in self.repo.list_transactions()
+            if tx.get("statement_id") == statement_id
+        }
+        rows: list[dict[str, Any]] = []
+        native_misses = 0
+        for region in regions:
+            if len(region) != 4:
+                continue
+            rect = (float(region[0]), float(region[1]), float(region[2]), float(region[3]))
+            text = pdf_mod.page_text_in_rect(stored, page, rect)
+            if not text.strip():
+                native_misses += 1
+                rendered = pdf_mod.render_region(stored, page, rect)
+                if rendered is None:
+                    continue
+                engine = build_engine(stored, glm_model_dir=self.glm_model_dir(), prefer=prefer)
+                page_texts = engine.run([rendered])
+                text = "\n".join(p.text for p in page_texts)
+            extracted = extract_mod.extract_heuristic(
+                [extract_mod.PageText(number=page, text=text, engine="region")]
+            )
+            for tx in [*extracted.transactions, *extracted.installments, *extracted.subscriptions]:
+                key = (tx.occurred_on, tx.amount_cents, tx.currency, tx.kind)
+                if key in existing:
+                    continue
+                existing.add(key)
+                rows.append(
+                    {
+                        "id": new_id("tx"),
+                        "statement_id": statement_id,
+                        "occurred_on": tx.occurred_on,
+                        "description": tx.description,
+                        "normalized_description": tx.description.lower(),
+                        "category": tx.category,
+                        "amount_cents": tx.amount_cents,
+                        "currency": tx.currency,
+                        "installment_number": tx.installment_number,
+                        "installment_total": tx.installment_total,
+                        "kind": tx.kind,
+                        "confirmed": 0,
+                        "source_page": page,
+                        "source_bbox": rect,
+                        "confidence": 0.65,
+                        "content_hash": hashlib.sha256(
+                            f"{tx.occurred_on}|{tx.description}|{tx.amount_cents}|{page}".encode()
+                        ).hexdigest(),
+                    }
+                )
+        if not rows:
+            return {"transactions": [], "engine": "none", "regions": len(regions)}
+        self.repo.insert_transactions(rows)
+        return {
+            "transactions": self.repo.list_transactions(),
+            "engine": "native-pymupdf" if native_misses == 0 else "auto",
+            "regions": len(regions),
+        }
+
+    def add_transactions(self, statement_id: str, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Agrega movimientos cargados a mano a un documento."""
+        if not self.repo.get_statement(statement_id):
+            raise NotFoundError("Documento no encontrado")
+        rows = []
+        for item in items:
+            occurred_on = item.get("occurredOn") or today().isoformat()
+            description = str(item.get("description") or "").strip()
+            if not description:
+                continue
+            amount = item.get("amountCents")
+            if amount is None:
+                amount = to_cents(str(item.get("amount") or "0"))
+            rows.append(
+                {
+                    "id": new_id("tx"),
+                    "statement_id": statement_id,
+                    "occurred_on": occurred_on,
+                    "description": description[:120],
+                    "normalized_description": description.lower(),
+                    "category": item.get("category"),
+                    "amount_cents": int(amount),
+                    "currency": item.get("currency") or "ARS",
+                    "kind": item.get("kind") or "purchase",
+                    "confirmed": 0,
+                    "source_page": item.get("page"),
+                    "source_bbox": item.get("bbox"),
+                    "confidence": 1.0,
+                    "content_hash": hashlib.sha256(
+                        f"{occurred_on}|{description}|{amount}|{item.get('page')}".encode()
+                    ).hexdigest(),
+                }
+            )
+        if rows:
+            self.repo.insert_transactions(rows)
+        return self.repo.list_transactions()
+
     def review(self, statement_id: str) -> dict[str, Any]:
         statement = self.repo.get_statement(statement_id)
         if not statement:

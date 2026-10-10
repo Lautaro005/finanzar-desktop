@@ -24,6 +24,54 @@ const SUGGESTIONS = [
   "¿Cuándo cobro el sueldo?",
 ];
 
+/**
+ * Texto de la respuesta en párrafos y viñetas.
+ *
+ * El modelo local a veces devuelve markdown suelto (`- `, `**`, `#`); sin esto
+ * el widget lo mostraría con los asteriscos a la vista.
+ */
+function AnswerText({ content, role }: { content: string; role: "user" | "assistant" }): JSX.Element {
+  const blocks: JSX.Element[] = [];
+  let listItems: string[] = [];
+
+  const flushList = () => {
+    if (listItems.length === 0) return;
+    const items = [...listItems];
+    blocks.push(
+      <ul key={`ul-${blocks.length}`} className="answer-list">
+        {items.map((item, index) => (
+          <li key={index}>{stripMarkdown(item)}</li>
+        ))}
+      </ul>,
+    );
+    listItems = [];
+  };
+
+  for (const raw of content.split(/\n+/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (/^[-*•]\s+/.test(line) || /^\d+[.)]\s+/.test(line)) {
+      listItems.push(line.replace(/^([-*•]|\d+[.)])\s+/, ""));
+      continue;
+    }
+    flushList();
+    blocks.push(<p key={`p-${blocks.length}`}>{stripMarkdown(line)}</p>);
+  }
+  flushList();
+
+  if (blocks.length === 0) return <p>{content}</p>;
+  return <div className={`answer-body ${role}`}>{blocks}</div>;
+}
+
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/^\s*#{1,6}\s*/, "")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/__(.*?)__/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .trim();
+}
+
 export function CopilotDrawer({ open, onClose }: { open: boolean; onClose: () => void }): JSX.Element {
   const { period, toast } = useApp();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -113,11 +161,23 @@ export function CopilotDrawer({ open, onClose }: { open: boolean; onClose: () =>
             <small>Responde solo con datos confirmados y muestra sus fuentes</small>
           </div>
           <div className="chat-header-actions">
-            <button type="button" className="icon-button" aria-label="Borrar historial" onClick={clear}>
-              <Icon name="close" />
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Reiniciar conversación"
+              title="Reiniciar conversación"
+              onClick={clear}
+            >
+              <Icon name="refresh" />
             </button>
-            <button type="button" className="icon-button" aria-label="Cerrar copiloto" onClick={onClose}>
-              <Icon name="chevron-right" />
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Cerrar copiloto"
+              title="Cerrar copiloto"
+              onClick={onClose}
+            >
+              <Icon name="close" />
             </button>
           </div>
         </div>
@@ -143,16 +203,19 @@ export function CopilotDrawer({ open, onClose }: { open: boolean; onClose: () =>
                 </span>
               )}
               <div>
-                <p>{message.content}</p>
+                <AnswerText content={message.content} role={message.role} />
                 {message.role === "assistant" && message.sources && message.sources.length > 0 && (
-                  <ul className="source-list">
-                    {message.sources.map((source) => (
-                      <li key={source.id}>
-                        <code>{source.id}</code> {source.label}
-                        {source.amountCents !== undefined ? ` · ${formatCents(source.amountCents)}` : ""}
-                      </li>
-                    ))}
-                  </ul>
+                  <details className="source-details">
+                    <summary>{message.sources.length} fuentes usadas</summary>
+                    <ul className="source-list">
+                      {message.sources.map((source) => (
+                        <li key={source.id}>
+                          <code>{source.id}</code> {source.label}
+                          {source.amountCents !== undefined ? ` · ${formatCents(source.amountCents)}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
                 )}
                 {message.role === "assistant" && message.evidenceAvailable === false && (
                   <small className="no-evidence">
