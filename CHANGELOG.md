@@ -2,6 +2,35 @@
 
 Todas las versiones siguen [SemVer](https://semver.org/lang/es/).
 
+## 0.2.6 — 2026-10-10
+
+### Walkthrough de primer arranque
+
+- Cada descarga (llama.cpp, Spark, GLM-OCR y EmbeddingGemma) muestra su **barra de
+  progreso con el porcentaje** dentro de su propia tarjeta, y el botón pasa a
+  "Descargando… 42%". Mientras el porcentaje todavía no se conoce, la barra se
+  anima para que se vea que está trabajando.
+
+### Dólares en el dashboard
+
+- **Todos los indicadores** muestran pesos y, debajo, dólares cuando los hay:
+  balance disponible, ingresos del mes, a pagar, los cuatro pasos de la
+  proyección (saldo actual, ingresos programados, pagos y fijos, saldo estimado),
+  cuotas activas, suscripciones y pagos realizados. Nada se convierte: cada
+  moneda se informa por separado.
+
+### Ingresos
+
+- Los **ingresos recurrentes se pueden eliminar** (antes sólo se podían pausar).
+  Los ingresos que ya entraron quedan en el historial y dejan de acreditarse.
+
+### Interfaz
+
+- El **sidebar** ya no repite "Configuración" abajo del perfil: queda sólo el
+  ítem de arriba y la tuerca dentro del chip de perfil, que abre tu perfil.
+- En **Perfil**, los tags de tarjetas y categorías ya no quedan pegados al
+  subtítulo de la tarjeta.
+
 ## 0.2.5 — 2026-10-10
 
 ### Primer arranque

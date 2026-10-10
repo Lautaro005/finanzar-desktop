@@ -18,6 +18,7 @@ import { useApp } from "../../app/context";
 import type { Account, ModelStatus, RuntimeStatus } from "../../types/api";
 
 type Step = "name" | "models" | "account" | "income" | "document";
+type ProgressKey = "runtime" | "spark" | "glm" | "gemma";
 
 const STEPS: Array<{ id: Step; label: string }> = [
   { id: "name", label: "Tu nombre" },
@@ -33,13 +34,39 @@ interface Progress {
   message: string;
 }
 
+/** Porcentaje legible de una descarga en curso. */
+function percentOf(state: Progress): string {
+  const percent = Math.round(Math.min(1, Math.max(0, state.value)) * 100);
+  return state.value <= 0 ? "…" : `${percent}%`;
+}
+
+/** Barra de progreso de una descarga, con porcentaje visible. */
+function DownloadProgress({ state }: { state?: Progress }): JSX.Element | null {
+  if (!state) return null;
+  const percent = Math.round(Math.min(1, Math.max(0, state.value)) * 100);
+  const unknown = state.value <= 0;
+  return (
+    <div className="model-progress" role="status" aria-live="polite">
+      <div className="model-progress-head">
+        <strong>{state.message || "Descargando…"}</strong>
+        <span>{unknown ? "calculando…" : `${percent}%`}</span>
+      </div>
+      <ProgressBar
+        value={percent}
+        indeterminate={unknown}
+        label={`Progreso de la descarga de ${state.label}`}
+      />
+    </div>
+  );
+}
+
 export function Onboarding(): JSX.Element | null {
   const { backendReady, onboardingDone, setOnboardingDone, setUserName, toast, refresh } = useApp();
   const [step, setStep] = useState<Step>("name");
   const [name, setName] = useState("");
   const [models, setModels] = useState<ModelStatus[]>([]);
   const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
-  const [progress, setProgress] = useState<Progress | null>(null);
+  const [progress, setProgress] = useState<Partial<Record<ProgressKey, Progress>>>({});
   const [ocrChoice, setOcrChoice] = useState<"layout" | "glm">("layout");
   const [withEmbeddings, setWithEmbeddings] = useState(false);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -79,22 +106,26 @@ export function Onboarding(): JSX.Element | null {
 
   /** Espera a que un modelo o el runtime queden instalados, mostrando progreso. */
   const waitForInstall = useCallback(
-    async (label: string, done: () => Promise<boolean>, jobKind: string) => {
+    async (key: ProgressKey, label: string, done: () => Promise<boolean>, jobKind: string) => {
       const started = Date.now();
+      setProgress((current) => ({ ...current, [key]: { label, value: 0, message: "Preparando la descarga…" } }));
       for (;;) {
-        await new Promise((resolve) => window.setTimeout(resolve, 900));
+        await new Promise((resolve) => window.setTimeout(resolve, 700));
         try {
           const jobs = await api.jobs(jobKind);
           const running = jobs.jobs.find((job) => job.status === "running") ?? jobs.jobs[0];
           if (running) {
-            setProgress({ label, value: running.progress, message: running.message || "Descargando…" });
+            setProgress((current) => ({
+              ...current,
+              [key]: { label, value: running.progress, message: running.message || "Descargando…" },
+            }));
             if (running.status === "error") throw new Error(running.error ?? running.message);
           }
         } catch (error) {
           if (error instanceof Error && error.message && !error.message.includes("backend")) throw error;
         }
         if (await done()) {
-          setProgress({ label, value: 1, message: "Listo" });
+          setProgress((current) => ({ ...current, [key]: { label, value: 1, message: "Listo" } }));
           return;
         }
         if (Date.now() - started > 20 * 60 * 1000) throw new Error("La descarga tardó demasiado.");
@@ -107,36 +138,46 @@ export function Onboarding(): JSX.Element | null {
     setBusy(true);
     try {
       await api.downloadRuntime();
-      await waitForInstall("llama.cpp", async () => {
-        const data = await api.models();
-        setRuntime(data.runtime);
-        return data.runtime.installed;
-      }, "runtime_download");
+      await waitForInstall(
+        "runtime",
+        "llama.cpp",
+        async () => {
+          const data = await api.models();
+          setRuntime(data.runtime);
+          return data.runtime.installed;
+        },
+        "runtime_download",
+      );
       toast("Runtime de llama.cpp listo.");
     } catch (error) {
       toast(error instanceof Error ? error.message : "No se pudo instalar llama.cpp", "error");
     } finally {
       setBusy(false);
-      setProgress(null);
+      setProgress((current) => ({ ...current, runtime: undefined }));
       void loadModels();
     }
   };
 
-  const installModel = async (modelId: string, label: string) => {
+  const installModel = async (modelId: string, key: ProgressKey, label: string) => {
     setBusy(true);
     try {
       await api.downloadModel(modelId);
-      await waitForInstall(label, async () => {
-        const data = await api.models();
-        setModels(data.models);
-        return Boolean(data.models.find((model) => model.id === modelId)?.installed);
-      }, "model_download");
+      await waitForInstall(
+        key,
+        label,
+        async () => {
+          const data = await api.models();
+          setModels(data.models);
+          return Boolean(data.models.find((model) => model.id === modelId)?.installed);
+        },
+        "model_download",
+      );
       toast(`${label} descargado.`);
     } catch (error) {
       toast(error instanceof Error ? error.message : `No se pudo descargar ${label}`, "error");
     } finally {
       setBusy(false);
-      setProgress(null);
+      setProgress((current) => ({ ...current, [key]: undefined }));
       void loadModels();
     }
   };
@@ -320,19 +361,22 @@ export function Onboarding(): JSX.Element | null {
                   <div className="model-actions">
                     {!runtimeReady && (
                       <button type="button" className="secondary-button" onClick={installRuntime} disabled={busy}>
-                        <Icon name="download" /> Instalar llama.cpp
+                        <Icon name="download" />
+                        {progress.runtime ? `Instalando llama.cpp… ${percentOf(progress.runtime)}` : "Instalar llama.cpp"}
                       </button>
                     )}
                     <button
                       type="button"
                       className="primary-button"
-                      onClick={() => installModel("spark-x2.5-1.7b", "Spark")}
+                      onClick={() => installModel("spark-x2.5-1.7b", "spark", "Spark")}
                       disabled={busy || !runtimeReady}
                     >
-                      <Icon name="download" /> Descargar Spark
+                      <Icon name="download" />
+                      {progress.spark ? `Descargando Spark… ${percentOf(progress.spark)}` : "Descargar Spark"}
                     </button>
                   </div>
                 )}
+                <DownloadProgress state={progress.runtime ?? progress.spark} />
               </article>
 
               <article className="model-card">
@@ -362,12 +406,14 @@ export function Onboarding(): JSX.Element | null {
                     <button
                       type="button"
                       className="secondary-button"
-                      onClick={() => installModel("glm-ocr", "GLM-OCR")}
+                      onClick={() => installModel("glm-ocr", "glm", "GLM-OCR")}
                       disabled={busy}
                     >
-                      <Icon name="download" /> Descargar GLM-OCR
+                      <Icon name="download" />
+                      {progress.glm ? `Descargando GLM-OCR… ${percentOf(progress.glm)}` : "Descargar GLM-OCR"}
                     </button>
                   )}
+                  <DownloadProgress state={progress.glm} />
                 </article>
               )}
 
@@ -382,12 +428,16 @@ export function Onboarding(): JSX.Element | null {
                   <button
                     type="button"
                     className="secondary-button"
-                    onClick={() => installModel("embeddinggemma-2", "EmbeddingGemma")}
+                    onClick={() => installModel("embeddinggemma-2", "gemma", "EmbeddingGemma")}
                     disabled={busy}
                   >
-                    <Icon name="download" /> Descargar EmbeddingGemma
+                    <Icon name="download" />
+                    {progress.gemma
+                      ? `Descargando EmbeddingGemma… ${percentOf(progress.gemma)}`
+                      : "Descargar EmbeddingGemma"}
                   </button>
                 )}
+                <DownloadProgress state={progress.gemma} />
               </article>
 
               <label className="money-check">
@@ -401,16 +451,6 @@ export function Onboarding(): JSX.Element | null {
                   <small>Se usa cuando el modelo está descargado; sin él la memoria sigue funcionando.</small>
                 </span>
               </label>
-
-              {progress && (
-                <div className="onboarding-progress" role="status" aria-live="polite">
-                  <div>
-                    <strong>{progress.label}</strong>
-                    <span>{progress.message}</span>
-                  </div>
-                  <ProgressBar value={progress.value * 100} label={`Progreso de ${progress.label}`} />
-                </div>
-              )}
             </section>
           )}
 

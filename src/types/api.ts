@@ -190,6 +190,10 @@ export interface Projection {
   endBalanceCents: number;
   assumptions: string[];
   sources: Array<{ type: string; id: string; label: string; amountCents: number }>;
+  startByCurrency?: Record<string, number>;
+  incomeByCurrency?: Record<string, number>;
+  paymentsByCurrency?: Record<string, number>;
+  endByCurrency?: Record<string, number>;
 }
 
 export interface Dashboard {
@@ -205,11 +209,24 @@ export interface Dashboard {
     recurring: RecurringIncome[];
     nextCredit: { date: string; amount_cents: number; name: string } | null;
   };
-  payments: { pendingCents: number; pendingCount: number; paidCents: number; byCurrency?: Record<string, number> };
+  payments: {
+    pendingCents: number;
+    pendingCount: number;
+    paidCents: number;
+    byCurrency?: Record<string, number>;
+    paidByCurrency?: Record<string, number>;
+  };
   upcomingPayments: Payment[];
   projection: Projection;
   projections: Record<string, Projection>;
-  commitments: { installmentsCents: number; subscriptionsCents: number; activeInstallments: number; subscriptions: number };
+  commitments: {
+    installmentsCents: number;
+    installmentsByCurrency?: Record<string, number>;
+    subscriptionsCents: number;
+    subscriptionsByCurrency?: Record<string, number>;
+    activeInstallments: number;
+    subscriptions: number;
+  };
   emergencyFund: SavingsGoal | null;
   lowBalanceAlert: { thresholdCents: number; projectedCents: number; title: string; body: string } | null;
   documents: { total: number; pending: number; pendingList: Array<{ id: string; filename: string; status: string }> };

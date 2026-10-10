@@ -5,6 +5,6 @@ a la red. SQLite es la fuente de verdad estructurada; ChromaDB es la memoria
 semántica de recuperación.
 """
 
-__version__ = "0.2.5"
+__version__ = "0.2.6"
 LOCAL_USER_ID = "local"
 API_PREFIX = "/api"

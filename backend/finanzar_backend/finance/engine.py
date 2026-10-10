@@ -54,6 +54,11 @@ class Projection:
     end_balance_cents: int
     assumptions: list[str] = field(default_factory=list)
     sources: list[dict[str, Any]] = field(default_factory=list)
+    # Sin conversión de moneda: cada paso de la proyección va también por moneda.
+    start_by_currency: dict[str, int] = field(default_factory=dict)
+    income_by_currency: dict[str, int] = field(default_factory=dict)
+    payments_by_currency: dict[str, int] = field(default_factory=dict)
+    end_by_currency: dict[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -65,6 +70,10 @@ class Projection:
             "endBalanceCents": self.end_balance_cents,
             "assumptions": self.assumptions,
             "sources": self.sources,
+            "startByCurrency": self.start_by_currency,
+            "incomeByCurrency": self.income_by_currency,
+            "paymentsByCurrency": self.payments_by_currency,
+            "endByCurrency": self.end_by_currency,
         }
 
 
@@ -296,8 +305,10 @@ class FinanceEngine:
         reference = reference or today()
         horizon = add_months(reference, months)
         start_balance = self.consolidated_balance()
+        start_by_currency = self.balances_by_currency()
 
         future_income = 0
+        income_by_currency: dict[str, int] = {}
         income_sources: list[dict[str, Any]] = []
         for income in self.repo.list_recurring_income():
             if not income["active"]:
@@ -315,6 +326,8 @@ class FinanceEngine:
             if count:
                 amount = income["amount_cents"] * count
                 future_income += amount
+                currency = (income.get("currency") or "ARS").upper()
+                income_by_currency[currency] = income_by_currency.get(currency, 0) + amount
                 income_sources.append(
                     {
                         "type": "recurring_income",
@@ -325,6 +338,7 @@ class FinanceEngine:
                 )
 
         future_payments = 0
+        payments_by_currency: dict[str, int] = {}
         payment_sources: list[dict[str, Any]] = []
         for payment in self.repo.list_payments():
             if payment["status"] == "paid":
@@ -332,6 +346,8 @@ class FinanceEngine:
             due = date.fromisoformat(payment["due_date"])
             if reference <= due <= horizon:
                 future_payments += payment["amount_cents"]
+                currency = (payment.get("currency") or "ARS").upper()
+                payments_by_currency[currency] = payments_by_currency.get(currency, 0) + payment["amount_cents"]
                 payment_sources.append(
                     {
                         "type": "payment",
@@ -342,6 +358,13 @@ class FinanceEngine:
                 )
 
         end_balance = start_balance + future_income - future_payments
+        currencies = {*start_by_currency, *income_by_currency, *payments_by_currency}
+        end_by_currency = {
+            currency: start_by_currency.get(currency, 0)
+            + income_by_currency.get(currency, 0)
+            - payments_by_currency.get(currency, 0)
+            for currency in currencies
+        }
         return Projection(
             months=months,
             cutoff=horizon.isoformat(),
@@ -356,6 +379,10 @@ class FinanceEngine:
                 "Las cuotas y suscripciones no se descuentan dos veces: vienen dentro del resumen",
             ],
             sources=[*income_sources, *payment_sources],
+            start_by_currency=start_by_currency,
+            income_by_currency=income_by_currency,
+            payments_by_currency=payments_by_currency,
+            end_by_currency=end_by_currency,
         )
 
     def projections(self, reference: date | None = None) -> dict[str, Any]:
@@ -366,12 +393,22 @@ class FinanceEngine:
         installments = self.repo.list_installments()
         active = [i for i in installments if i["remaining"] > 0 or i["installment_number"] < i["installment_total"]]
         subs = self.repo.list_subscriptions(active_only=True)
+        installments_by_currency: dict[str, int] = {}
+        for item in active:
+            currency = (item.get("currency") or "ARS").upper()
+            installments_by_currency[currency] = installments_by_currency.get(currency, 0) + item["amount_cents"]
+        subscriptions_by_currency: dict[str, int] = {}
+        for item in subs:
+            currency = (item.get("currency") or "ARS").upper()
+            subscriptions_by_currency[currency] = subscriptions_by_currency.get(currency, 0) + item["amount_cents"]
         return {
             "installments": installments,
             "activeInstallments": active,
-            "installmentsCents": sum(i["amount_cents"] for i in active),
+            "installmentsCents": installments_by_currency.get("ARS", 0),
+            "installmentsByCurrency": installments_by_currency,
             "subscriptions": subs,
-            "subscriptionsCents": sum(s["amount_cents"] for s in subs),
+            "subscriptionsCents": subscriptions_by_currency.get("ARS", 0),
+            "subscriptionsByCurrency": subscriptions_by_currency,
         }
 
     def emergency_fund(self) -> dict[str, Any] | None:
@@ -507,6 +544,7 @@ class FinanceEngine:
         accounts = self.account_balances()
         # Saldos por moneda incluyendo ingresos y pagos sin cuenta asignada.
         balances = self.balances_by_currency()
+        commitments = self.commitments()
 
         statements = self.repo.list_statements()
         pending_documents = [s for s in statements if s["status"] not in {"confirmed"}]
@@ -532,10 +570,12 @@ class FinanceEngine:
             "projection": self.projection(1).to_dict(),
             "projections": self.projections(),
             "commitments": {
-                "installmentsCents": self.commitments()["installmentsCents"],
-                "subscriptionsCents": self.commitments()["subscriptionsCents"],
-                "activeInstallments": len(self.commitments()["activeInstallments"]),
-                "subscriptions": len(self.commitments()["subscriptions"]),
+                "installmentsCents": commitments["installmentsCents"],
+                "installmentsByCurrency": commitments["installmentsByCurrency"],
+                "subscriptionsCents": commitments["subscriptionsCents"],
+                "subscriptionsByCurrency": commitments["subscriptionsByCurrency"],
+                "activeInstallments": len(commitments["activeInstallments"]),
+                "subscriptions": len(commitments["subscriptions"]),
             },
             "emergencyFund": self.emergency_fund(),
             "lowBalanceAlert": self.low_balance_alert(),

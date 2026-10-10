@@ -6,7 +6,7 @@ import { Icon } from "../../components/Icon";
 import { MonthSelect } from "../../components/DateField";
 import { EmptyState, ErrorBlock, LoadingBlock, Panel, ProgressBar, StatusPill } from "../../components/ui";
 import { api } from "../../lib/backend";
-import { formatCents, formatCompact, formatDate, formatDayMonth, monthLabel } from "../../lib/format";
+import { formatCents, formatDate, formatDayMonth, monthLabel } from "../../lib/format";
 import { useAsync } from "../../lib/hooks";
 import { useApp } from "../../app/context";
 
@@ -75,6 +75,13 @@ export function Dashboard(): JSX.Element {
   const usdBalance = data.balance.byCurrency?.USD ?? 0;
   const usdIncome = data.income.byCurrency?.USD ?? 0;
   const usdPending = data.payments.byCurrency?.USD ?? 0;
+  const usdProjectedStart = data.projection.startByCurrency?.USD ?? 0;
+  const usdProjectedIncome = data.projection.incomeByCurrency?.USD ?? 0;
+  const usdProjectedPayments = data.projection.paymentsByCurrency?.USD ?? 0;
+  const usdProjectedEnd = data.projection.endByCurrency?.USD ?? 0;
+  const usdInstallments = data.commitments.installmentsByCurrency?.USD ?? 0;
+  const usdSubscriptions = data.commitments.subscriptionsByCurrency?.USD ?? 0;
+  const usdPaid = data.payments.paidByCurrency?.USD ?? 0;
 
   return (
     <>
@@ -241,22 +248,42 @@ export function Dashboard(): JSX.Element {
           <div className="forecast-flow">
             <div>
               <span>Saldo actual</span>
-              <strong>{formatCents(data.projection.startBalanceCents)}</strong>
+              <AmountStack
+                cents={data.projection.startBalanceCents}
+                usdCents={usdProjectedStart}
+                className="forecast-value"
+                altClassName="stat-alt"
+              />
             </div>
             <span className="flow-sign positive-sign">+</span>
             <div>
               <span>Ingresos programados</span>
-              <strong>{formatCents(data.projection.futureIncomeCents)}</strong>
+              <AmountStack
+                cents={data.projection.futureIncomeCents}
+                usdCents={usdProjectedIncome}
+                className="forecast-value"
+                altClassName="stat-alt"
+              />
             </div>
             <span className="flow-sign negative-sign">−</span>
             <div>
               <span>Pagos y fijos</span>
-              <strong>{formatCents(data.projection.futurePaymentsCents)}</strong>
+              <AmountStack
+                cents={data.projection.futurePaymentsCents}
+                usdCents={usdProjectedPayments}
+                className="forecast-value"
+                altClassName="stat-alt"
+              />
             </div>
             <span className="flow-sign">=</span>
             <div className="forecast-result">
               <span>Saldo estimado</span>
-              <strong>{formatCents(data.projection.endBalanceCents)}</strong>
+              <AmountStack
+                cents={data.projection.endBalanceCents}
+                usdCents={usdProjectedEnd}
+                className="forecast-value"
+                altClassName="stat-alt"
+              />
             </div>
           </div>
           <details className="assumption-list">
@@ -370,7 +397,12 @@ export function Dashboard(): JSX.Element {
               <Icon name="receipt" />
             </span>
           </div>
-          <strong className="stat-value">{formatCompact(data.commitments.installmentsCents)}</strong>
+          <AmountStack
+            cents={data.commitments.installmentsCents}
+            usdCents={usdInstallments}
+            className="stat-value"
+            altClassName="stat-alt"
+          />
           <div className="stat-foot">
             <span>{data.commitments.activeInstallments} cuotas</span>
           </div>
@@ -382,7 +414,12 @@ export function Dashboard(): JSX.Element {
               <Icon name="repeat" />
             </span>
           </div>
-          <strong className="stat-value">{formatCompact(data.commitments.subscriptionsCents)}</strong>
+          <AmountStack
+            cents={data.commitments.subscriptionsCents}
+            usdCents={usdSubscriptions}
+            className="stat-value"
+            altClassName="stat-alt"
+          />
           <div className="stat-foot">
             <span>{data.commitments.subscriptions} recurrentes</span>
           </div>
@@ -406,7 +443,12 @@ export function Dashboard(): JSX.Element {
               <Icon name="check" />
             </span>
           </div>
-          <strong className="stat-value">{formatCompact(data.payments.paidCents)}</strong>
+          <AmountStack
+            cents={data.payments.paidCents}
+            usdCents={usdPaid}
+            className="stat-value"
+            altClassName="stat-alt"
+          />
           <div className="stat-foot">
             <span>este período</span>
           </div>

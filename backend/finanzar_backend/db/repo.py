@@ -230,6 +230,26 @@ class Repository:
         self.audit("recurring_income.update", entity="recurring_income", entity_id=income_id, details=fields)
         return self.get_recurring_income(income_id)
 
+    def delete_recurring_income(self, income_id: str) -> bool:
+        """Borra la recurrencia sin tocar el historial ya acreditado.
+
+        Los ingresos que ya entraron quedan en el historial (se les quita la
+        referencia para que no se anulen) y el mes en curso deja de acreditarse.
+        """
+        existing = self.get_recurring_income(income_id)
+        if existing is None:
+            return False
+        self.db.execute(
+            "UPDATE income_entries SET recurring_income_id = NULL WHERE recurring_income_id = ? AND user_id = ?",
+            (income_id, self.user_id),
+        )
+        self.db.execute(
+            "DELETE FROM recurring_income WHERE id = ? AND user_id = ?",
+            (income_id, self.user_id),
+        )
+        self.audit("recurring_income.delete", entity="recurring_income", entity_id=income_id)
+        return True
+
     # -- income entries ---------------------------------------------------
     def upsert_income_entry(self, entry_id: str, data: dict[str, Any]) -> dict[str, Any]:
         self.db.execute(

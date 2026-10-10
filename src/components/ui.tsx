@@ -32,11 +32,26 @@ export function Panel({
   );
 }
 
-export function ProgressBar({ value, label }: { value: number; label?: string }): JSX.Element {
+export function ProgressBar({
+  value,
+  label,
+  indeterminate,
+}: {
+  value: number;
+  label?: string;
+  indeterminate?: boolean;
+}): JSX.Element {
   const clamped = Math.max(0, Math.min(100, value));
   return (
-    <div className="progress-track" role="progressbar" aria-valuenow={Math.round(clamped)} aria-valuemin={0} aria-valuemax={100} aria-label={label ?? "Progreso"}>
-      <i style={{ width: `${clamped}%` }} />
+    <div
+      className="progress-track"
+      role="progressbar"
+      aria-valuenow={indeterminate ? undefined : Math.round(clamped)}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-label={label ?? "Progreso"}
+    >
+      <i className={indeterminate ? "indeterminate" : undefined} style={indeterminate ? undefined : { width: `${clamped}%` }} />
     </div>
   );
 }
