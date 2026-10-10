@@ -238,13 +238,16 @@ export function CopilotDrawer({ open, onClose }: { open: boolean; onClose: () =>
           )}
         </div>
 
-        <div className="suggested-prompts">
-          {SUGGESTIONS.map((suggestion) => (
-            <button key={suggestion} type="button" onClick={() => ask(suggestion)} disabled={busy}>
-              {suggestion}
-            </button>
-          ))}
-        </div>
+        {/* Las sugerencias solo aparecen con la conversación reiniciada. */}
+        {messages.length === 0 && (
+          <div className="suggested-prompts">
+            {SUGGESTIONS.map((suggestion) => (
+              <button key={suggestion} type="button" onClick={() => ask(suggestion)} disabled={busy}>
+                {suggestion}
+              </button>
+            ))}
+          </div>
+        )}
 
         <form
           className="chat-input"

@@ -515,7 +515,7 @@ class Repository:
         return [_row_to_dict(r) for r in self.db.query(sql, params)]
 
     def update_transaction(self, tx_id: str, patch: dict[str, Any]) -> dict[str, Any] | None:
-        allowed = {"category", "description", "kind", "confirmed", "occurred_on", "amount_cents"}
+        allowed = {"category", "description", "kind", "confirmed", "occurred_on", "amount_cents", "currency"}
         fields = {k: v for k, v in patch.items() if k in allowed}
         if not fields:
             row = self.db.query_one("SELECT * FROM transactions WHERE id = ? AND user_id = ?", (tx_id, self.user_id))
@@ -529,6 +529,27 @@ class Repository:
         self.audit("transaction.update", entity="transactions", entity_id=tx_id, details=list(fields))
         row = self.db.query_one("SELECT * FROM transactions WHERE id = ? AND user_id = ?", (tx_id, self.user_id))
         return _row_to_dict(row) if row else None
+
+    def delete_transaction(self, tx_id: str) -> bool:
+        with self.db.transaction() as conn:
+            cursor = conn.execute(
+                "DELETE FROM transactions WHERE id = ? AND user_id = ?", (tx_id, self.user_id)
+            )
+        if cursor.rowcount > 0:
+            self.audit("transaction.delete", entity="transactions", entity_id=tx_id)
+            return True
+        return False
+
+    def delete_statement(self, statement_id: str) -> bool:
+        """Borra un documento y todo lo que cuelga de él (FK en cascada)."""
+        with self.db.transaction() as conn:
+            cursor = conn.execute(
+                "DELETE FROM statements WHERE id = ? AND user_id = ?", (statement_id, self.user_id)
+            )
+        if cursor.rowcount > 0:
+            self.audit("document.delete", entity="statements", entity_id=statement_id)
+            return True
+        return False
 
     # -- installments -----------------------------------------------------
     def insert_installments(self, rows: Iterable[dict[str, Any]]) -> int:

@@ -26,6 +26,49 @@ from .client import LlamaClient
 logger = logging.getLogger(__name__)
 
 NO_EVIDENCE = "No tengo datos confirmados suficientes para responder eso."
+OUT_OF_SCOPE = (
+    "Solo puedo ayudarte con tus finanzas: balance, pagos y vencimientos, cuotas, suscripciones, "
+    "ingresos y metas. Probá con «¿cuánto tengo que pagar?»."
+)
+
+# Palabras que indican que la pregunta es sobre las finanzas de la persona.
+_FINANCE_HINTS = (
+    "plata",
+    "dinero",
+    "gast",
+    "compr",
+    "pagu",
+    "pago",
+    "pag",
+    "deud",
+    "tarjeta",
+    "banco",
+    "cuenta",
+    "ahorr",
+    "sueldo",
+    "cobr",
+    "cuota",
+    "suscrip",
+    "saldo",
+    "ingres",
+    "presupuest",
+    "meta",
+    "dólar",
+    "dolar",
+    "peso",
+    "factura",
+    "resumen",
+    "venc",
+    "cierre",
+    "impuest",
+    "percep",
+    "gasto",
+    "límite",
+    "limite",
+    "disponible",
+    "mes",
+    "plata",
+)
 
 SYSTEM_PROMPT = (
     "Sos el copiloto financiero local de FinanzAR. Respondés en español rioplatense, breve y claro: "
@@ -34,12 +77,11 @@ SYSTEM_PROMPT = (
     "esos datos SON reales y suficientes. Usalos para responder y no los contradigas.\n"
     "Respondé directamente la pregunta con los números de la EVIDENCIA (por ejemplo, si te "
     "preguntan cuánto tiene que pagar, decí el importe del total a pagar).\n"
-    "No copies ni repitas la sección EVIDENCIA, no enumeres las fuentes una por una y no inventes "
-    "importes, fechas ni entidades que no estén ahí.\n"
+    "No copies ni repitas la sección EVIDENCIA, no enumeres las fuentes ni escribas la palabra "
+    "«Fuentes», y no inventes importes, fechas ni entidades que no estén ahí.\n"
     "Solo si la sección EVIDENCIA estuviera vacía respondé exactamente: "
     f"'{NO_EVIDENCE}' "
-    "No das asesoramiento financiero ni recomendás inversiones.\n"
-    "Terminá mencionando las fuentes usadas con su id entre corchetes, por ejemplo [balance:total]."
+    "No das asesoramiento financiero ni recomendás inversiones."
 )
 
 # Formas en que el modelo chico se niega aunque la evidencia exista.
@@ -103,6 +145,14 @@ def detect_intents(question: str) -> list[str]:
     lowered = question.lower()
     found = [intent for intent, words in _INTENTS.items() if any(word in lowered for word in words)]
     return found or ["general"]
+
+
+def looks_financial(question: str) -> bool:
+    """¿La pregunta es sobre las finanzas de la persona?"""
+    lowered = question.lower()
+    if any(intent != "general" for intent in detect_intents(question)):
+        return True
+    return any(hint in lowered for hint in _FINANCE_HINTS)
 
 
 def _model_name(raw: str) -> str:
@@ -255,18 +305,27 @@ class Copilot:
 
     # -- respuesta --------------------------------------------------------
     def answer(self, question: str, period: str | None = None) -> CopilotAnswer:
-        sources = self.gather_evidence(question, period)
-        if not sources:
-            return CopilotAnswer(answer=NO_EVIDENCE, sources=[], evidence_available=False, engine="deterministic")
+        # Fuera de alcance: no se le pasa a la EVIDENCIA ni al modelo. Un modelo
+        # chico, si le mostrás el balance, contesta cualquier cosa con el balance.
+        if not looks_financial(question):
+            return CopilotAnswer(answer=OUT_OF_SCOPE, sources=[], evidence_available=False, engine="scope")
 
-        if self.client is not None and self.client.available():
+        sources = self.gather_evidence(question, period)
+
+        if sources and self.client is not None and self.client.available():
             try:
                 return self._answer_with_llm(question, sources, period)
             except Exception as exc:  # pragma: no cover - runtime caído
                 logger.warning("El LLM falló (%s); se usa respuesta determinística", exc)
 
+        deterministic = self._deterministic_answer(question, sources)
+        if deterministic is None:
+            # No hay datos ni una respuesta clara para esa pregunta.
+            return CopilotAnswer(
+                answer=NO_EVIDENCE, sources=[], evidence_available=False, engine="deterministic"
+            )
         return CopilotAnswer(
-            answer=self._deterministic_answer(question, sources),
+            answer=deterministic,
             sources=sources,
             evidence_available=True,
             engine="deterministic",
@@ -299,7 +358,7 @@ class Copilot:
         # determinística sobre las mismas fuentes.
         if self._should_fall_back(content):
             return CopilotAnswer(
-                answer=self._deterministic_answer(question, sources),
+                answer=self._deterministic_answer(question, sources) or NO_EVIDENCE,
                 sources=sources,
                 evidence_available=True,
                 engine="deterministic-after-llm",
@@ -327,14 +386,22 @@ class Copilot:
 
     @staticmethod
     def _clean_answer(content: str) -> str:
-        """Quita markdown suelto para que el widget muestre texto plano prolijo."""
-        cleaned = re.sub(r"^\s*#{1,6}\s*", "", content, flags=re.MULTILINE)
+        """Quita markdown suelto y la lista de fuentes del texto.
+
+        Las fuentes ya viajan aparte y el widget las muestra plegadas al final:
+        si el modelo las escribe dentro de la respuesta, se ven mezcladas.
+        """
+        cleaned = content.strip()
+        cleaned = re.sub(r"^\s*#{1,6}\s*", "", cleaned, flags=re.MULTILINE)
         cleaned = cleaned.replace("**", "").replace("__", "")
         cleaned = re.sub(r"^\s*[-*•]\s+", "", cleaned, flags=re.MULTILINE)
+        cleaned = re.sub(r"\n*\s*(Fuentes|Fuente|Sources?)\s*:[^\n]*$", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\n*\s*\[[a-z_]+:[^\]]*\]\.?\s*$", "", cleaned)
         cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
         return cleaned.strip()
 
-    def _deterministic_answer(self, question: str, sources: list[Source]) -> str:
+    def _deterministic_answer(self, question: str, sources: list[Source]) -> str | None:
+        """Respuesta armada con los datos confirmados; ``None`` si no hay con qué."""
         intents = detect_intents(question)
         lines: list[str] = []
         by_kind: dict[str, list[Source]] = {}
@@ -352,25 +419,30 @@ class Copilot:
                 f"El próximo vencimiento es {next_payment.label} "
                 f"por {format_ars(next_payment.amount_cents or 0)}."
             )
+        elif "payments" in intents:
+            lines.append("No hay vencimientos pendientes en este período.")
         if "installment" in by_kind:
             total = sum(s.amount_cents or 0 for s in by_kind["installment"])
             lines.append(f"Hay {len(by_kind['installment'])} cuotas activas por {format_ars(total)}.")
+        elif "installments" in intents:
+            lines.append("No tenés cuotas activas registradas.")
         if "subscription" in by_kind:
             total = sum(s.amount_cents or 0 for s in by_kind["subscription"])
             lines.append(f"Tenés {len(by_kind['subscription'])} suscripciones activas por {format_ars(total)}.")
+        elif "subscriptions" in intents:
+            lines.append("No hay suscripciones activas registradas.")
         if "goal" in by_kind:
             lines.append(f"Tus metas: {'; '.join(s.label for s in by_kind['goal'])}.")
         if "recurring_income" in by_kind:
             lines.append(f"Próximo ingreso: {by_kind['recurring_income'][0].label}.")
         if "insight" in by_kind:
             lines.append("; ".join(s.label for s in by_kind["insight"]) + ".")
+        elif "duplicates" in intents:
+            lines.append("No encontré gastos repetidos.")
         if "income" in by_kind:
             lines.append(f"Ingresos confirmados del período: {format_ars(by_kind['income'][0].amount_cents or 0)}.")
 
         if not lines:
-            lines.append("Estos son los datos confirmados que tengo disponibles.")
-
-        used_ids = ", ".join(s.id for s in sources[:6])
-        lines.append(f"Fuentes: [{used_ids}].")
-        _ = intents
+            return None
+        # Las fuentes no van en el texto: se muestran aparte (plegadas) en el widget.
         return " ".join(lines)

@@ -90,6 +90,22 @@ def test_layout_separates_pesos_and_dolares(tmp_path: Path) -> None:
     assert apple.amount_cents == 199
 
 
+def test_layout_region_only_takes_marked_rows(tmp_path: Path) -> None:
+    """Marcar una zona lee solo las filas de esa zona, con las columnas correctas."""
+    pdf = make_two_column_statement_pdf(tmp_path / "resumen.pdf")
+    pages = pdf_mod.words_pages(pdf)
+    full = parse_layout(pages)
+    assert full is not None
+    row = next(tx for tx in full.transactions if "CAMILA" in tx.description)
+
+    zone = {"page": 1, "x0": 60, "y0": row.bbox[1] - 2, "x1": 470, "y1": row.bbox[3] + 2}
+    marked = parse_layout(pages, region=zone)
+    assert marked is not None
+    assert [tx.description for tx in marked.transactions] == ["MERPAGO*CAMILAPIROYANSKY"]
+    assert marked.transactions[0].currency == "ARS"
+    assert marked.transactions[0].amount_cents == 320_970
+
+
 def test_layout_returns_none_without_text_layer(tmp_path: Path) -> None:
     """Un PDF sin capa de texto no tiene coordenadas: el pipeline usa el OCR."""
     import fitz

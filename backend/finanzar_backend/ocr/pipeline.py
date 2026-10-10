@@ -377,26 +377,31 @@ class DocumentPipeline:
             if tx.get("statement_id") == statement_id
         }
         rows: list[dict[str, Any]] = []
-        native_misses = 0
+        used_ocr = False
+        skipped = 0
         for region in regions:
             if len(region) != 4:
                 continue
             rect = (float(region[0]), float(region[1]), float(region[2]), float(region[3]))
-            text = pdf_mod.page_text_in_rect(stored, page, rect)
-            if not text.strip():
-                native_misses += 1
-                rendered = pdf_mod.render_region(stored, page, rect)
-                if rendered is None:
-                    continue
-                engine = build_engine(stored, glm_model_dir=self.glm_model_dir(), prefer=prefer)
-                page_texts = engine.run([rendered])
-                text = "\n".join(p.text for p in page_texts)
-            extracted = extract_mod.extract_heuristic(
-                [extract_mod.PageText(number=page, text=text, engine="region")]
-            )
+            zone = {"page": page, "x0": rect[0], "y0": rect[1], "x1": rect[2], "y1": rect[3]}
+            extracted = extract_mod.extract_layout(stored, region=zone)
+            if extracted is None:
+                # PDF sin capa de texto: se recorta la zona y se la manda al OCR.
+                text = pdf_mod.page_text_in_rect(stored, page, rect)
+                if not text.strip():
+                    used_ocr = True
+                    rendered = pdf_mod.render_region(stored, page, rect)
+                    if rendered is None:
+                        continue
+                    engine = build_engine(stored, glm_model_dir=self.glm_model_dir(), prefer=prefer)
+                    text = "\n".join(p.text for p in engine.run([rendered]))
+                extracted = extract_mod.extract_heuristic(
+                    [extract_mod.PageText(number=page, text=text, engine="region")]
+                )
             for tx in [*extracted.transactions, *extracted.installments, *extracted.subscriptions]:
                 key = (tx.occurred_on, tx.amount_cents, tx.currency, tx.kind)
                 if key in existing:
+                    skipped += 1
                     continue
                 existing.add(key)
                 rows.append(
@@ -413,22 +418,48 @@ class DocumentPipeline:
                         "installment_total": tx.installment_total,
                         "kind": tx.kind,
                         "confirmed": 0,
-                        "source_page": page,
-                        "source_bbox": rect,
-                        "confidence": 0.65,
+                        "source_page": tx.page or page,
+                        "source_bbox": tx.bbox or list(rect),
+                        "confidence": tx.confidence,
                         "content_hash": hashlib.sha256(
                             f"{tx.occurred_on}|{tx.description}|{tx.amount_cents}|{page}".encode()
                         ).hexdigest(),
                     }
                 )
-        if not rows:
-            return {"transactions": [], "engine": "none", "regions": len(regions)}
-        self.repo.insert_transactions(rows)
+        if rows:
+            self.repo.insert_transactions(rows)
         return {
-            "transactions": self.repo.list_transactions(),
-            "engine": "native-pymupdf" if native_misses == 0 else "auto",
+            "transactions": [
+                tx
+                for tx in self.repo.list_transactions()
+                if tx.get("statement_id") == statement_id
+            ],
+            "engine": "ocr" if used_ocr else "layout",
             "regions": len(regions),
+            "added": len(rows),
+            "skipped": skipped,
         }
+
+    def delete_document(self, statement_id: str) -> dict[str, Any]:
+        """Borra un documento: la fila, sus movimientos, el PDF y sus fragmentos."""
+        statement = self.repo.get_statement(statement_id)
+        if not statement:
+            raise NotFoundError("Documento no encontrado")
+        stored = Path(statement["stored_path"])
+        # Los fragmentos de memoria semántica no están en SQLite.
+        for collection in ("statement_chunks", "transaction_notes"):
+            try:
+                self.memory.delete_where(collection, {"statement_id": statement_id})
+            except Exception as exc:  # pragma: no cover - memoria no disponible
+                logger.debug("No se pudieron borrar fragmentos de %s: %s", collection, exc)
+        self.repo.delete_statement(statement_id)
+        try:
+            stored.unlink(missing_ok=True)
+        except OSError as exc:  # pragma: no cover - permisos
+            logger.warning("No se pudo borrar el PDF %s: %s", stored, exc)
+        self.engine.refresh_calendar()
+        refresh_insights(self.engine, period_of(today()))
+        return {"deleted": True, "statementId": statement_id}
 
     def add_transactions(self, statement_id: str, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Agrega movimientos cargados a mano a un documento."""

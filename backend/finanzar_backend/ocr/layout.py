@@ -290,6 +290,24 @@ def _value_for(line: list[_Token], needle: str, kind: str, lines: list[list[_Tok
     return None
 
 
+def _line_in_region(line: list[_Token], page: PageWords, region: dict[str, float]) -> bool:
+    """¿El renglón cae dentro de la zona marcada? (las zonas son por página)."""
+    if int(region.get("page", 1)) != page.number:
+        return False
+    y0 = min(token.y0 for token in line)
+    y1 = max(token.y1 for token in line)
+    x0 = min(token.x0 for token in line)
+    x1 = max(token.x1 for token in line)
+    # Se exige que el renglón esté contenido: así una zona marcada sobre una
+    # fila no arrastra las de arriba y abajo.
+    return (
+        y0 >= float(region["y0"]) - 2
+        and y1 <= float(region["y1"]) + 2
+        and x1 >= float(region["x0"]) - 2
+        and x0 <= float(region["x1"]) + 2
+    )
+
+
 def _kind_for(description: str) -> str:
     lowered = description.lower()
     if any(keyword in lowered for keyword in _TAX_KEYWORDS):
@@ -314,11 +332,16 @@ def _guess_brand(text: str) -> str:
     return "other"
 
 
-def parse_layout(pages: list[PageWords]) -> ExtractedStatement | None:
+def parse_layout(pages: list[PageWords], region: dict[str, float] | None = None) -> ExtractedStatement | None:
     """Extrae el resumen usando las coordenadas de las palabras.
 
     Devuelve ``None`` cuando el PDF no tiene capa de texto (no hay nada que
     reconstruir por posición) para que el pipeline use el texto del OCR.
+
+    ``region`` limita los **movimientos** a un rectángulo (``page``, ``x0``,
+    ``y0``, ``x1``, ``y1`` en puntos PDF): cuando la persona marca una zona del
+    resumen, se usan las mismas columnas y la misma limpieza que en una lectura
+    completa, en vez de adivinar sobre texto plano.
     """
     if not pages or not any(page.words for page in pages):
         return None
@@ -386,6 +409,8 @@ def parse_layout(pages: list[PageWords]) -> ExtractedStatement | None:
     for page in pages:
         for line in _lines(page.words):
             if not line:
+                continue
+            if region is not None and not _line_in_region(line, page, region):
                 continue
             normalized = _normalize(" ".join(t.text for t in line))
             if any(keyword in normalized for keyword in _SKIP_KEYWORDS):

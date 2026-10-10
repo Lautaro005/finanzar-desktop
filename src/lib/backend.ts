@@ -125,8 +125,10 @@ export const api = {
     request<{ statement: Statement; indexedChunks: number }>("POST", `/api/documents/${id}/confirm`),
   documentPage: (id: string, page = 1, dpi = 150) =>
     request<DocumentPageImage>("GET", `/api/documents/${id}/page?page=${page}&dpi=${dpi}`),
+  deleteDocument: (id: string) =>
+    request<{ deleted: boolean; statementId: string }>("DELETE", `/api/documents/${id}`),
   extractRegions: (id: string, page: number, regions: number[][]) =>
-    request<{ transactions: Transaction[]; engine: string; regions: number }>(
+    request<{ transactions: Transaction[]; engine: string; regions: number; added: number; skipped: number }>(
       "POST",
       `/api/documents/${id}/extract-regions`,
       { page, regions },
@@ -144,6 +146,8 @@ export const api = {
     const suffix = query.toString() ? `?${query.toString()}` : "";
     return request<{ transactions: Transaction[] }>("GET", `/api/transactions${suffix}`);
   },
+  deleteTransaction: (id: string) =>
+    request<{ deleted: boolean }>("DELETE", `/api/transactions/${id}`),
   patchTransaction: (id: string, payload: Record<string, unknown>) =>
     request<{ transaction: Transaction }>("PATCH", `/api/transactions/${id}`, payload),
 

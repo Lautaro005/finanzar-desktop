@@ -123,6 +123,9 @@ class TransactionPatch(BaseModel):
     kind: str | None = None
     confirmed: bool | None = None
     occurredOn: str | None = None
+    currency: str | None = None
+    amountCents: int | None = None
+    amount: str | None = None
 
 
 class GoalCreate(BaseModel):
@@ -576,6 +579,13 @@ async def document_review(request: Request, document_id: str) -> Any:
     return ok(review)
 
 
+@router.delete("/api/documents/{document_id}")
+async def document_delete(request: Request, document_id: str) -> Any:
+    """Borra un documento con sus movimientos y su PDF."""
+    context = ctx(request)
+    return ok(context.pipeline.delete_document(document_id))
+
+
 @router.get("/api/documents/{document_id}/page")
 async def document_page(request: Request, document_id: str, page: int = 1, dpi: int = 150) -> Any:
     """Imagen de una página del PDF importado, como data URL.
@@ -689,6 +699,14 @@ async def create_transaction(request: Request, payload: TransactionCreate) -> An
     return ok({"transaction": context.repo.list_transactions()[:1]})
 
 
+@router.delete("/api/transactions/{tx_id}")
+async def delete_transaction(request: Request, tx_id: str) -> Any:
+    context = ctx(request)
+    if not context.repo.delete_transaction(tx_id):
+        raise NotFoundError("Movimiento no encontrado")
+    return ok({"deleted": True})
+
+
 @router.patch("/api/transactions/{tx_id}")
 async def patch_transaction(request: Request, tx_id: str, payload: TransactionPatch) -> Any:
     context = ctx(request)
@@ -698,7 +716,10 @@ async def patch_transaction(request: Request, tx_id: str, payload: TransactionPa
         "kind": payload.kind,
         "confirmed": payload.confirmed,
         "occurred_on": payload.occurredOn,
+        "currency": payload.currency,
     }
+    if payload.amountCents is not None or payload.amount is not None:
+        patch["amount_cents"] = _money(payload.amountCents, payload.amount)
     patch = {k: v for k, v in patch.items() if v is not None}
     tx = context.repo.update_transaction(tx_id, patch)
     if tx is None:

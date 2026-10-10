@@ -491,11 +491,14 @@ def from_llm_payload(payload: dict[str, Any], pages: list[PageText]) -> Extracte
 
 
 # --- camino por layout (coordenadas del PDF) ---------------------------
-def extract_layout(pdf_path: Any) -> ExtractedStatement | None:
+def extract_layout(pdf_path: Any, region: dict[str, float] | None = None) -> ExtractedStatement | None:
     """Extrae con las coordenadas del PDF (separa la columna de pesos y la de dólares).
 
     Devuelve ``None`` cuando el PDF no tiene capa de texto: ahí no hay
     coordenadas y el pipeline usa el texto del OCR.
+
+    ``region`` restringe los movimientos a una zona marcada por la persona
+    (``page``, ``x0``, ``y0``, ``x1``, ``y1`` en puntos PDF).
     """
     from . import pdf as pdf_mod
     from .layout import parse_layout
@@ -504,7 +507,7 @@ def extract_layout(pdf_path: Any) -> ExtractedStatement | None:
         pages = pdf_mod.words_pages(pdf_path)
     except Exception:  # pragma: no cover - PDF ilegible
         return None
-    return parse_layout(pages)
+    return parse_layout(pages, region=region)
 
 
 # --- system prompt del extractor con LLM -------------------------------
