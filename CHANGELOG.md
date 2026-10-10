@@ -34,6 +34,16 @@ Primera versión funcional.
 - CI con ruff, pytest, build de frontend, tests de Vitest, `cargo fmt`,
   `cargo clippy` y `cargo test` para `aarch64` y `x86_64`.
 
+### OCR real verificado
+
+- Extra opcional `ocr` (`torch` + `torchvision` + `transformers>=5`) que habilita
+  la carga directa de GLM-OCR, con `scripts/ocr_check.py` como verificación de
+  punta a punta sobre un PDF de prueba.
+- Decodificación solo de los tokens generados (evita los marcadores `<|image|>`
+  del prompt en el texto) y deduplicación de líneas repetidas.
+- Deduplicación de movimientos con normalización de descripción, para que el OCR
+  no duplique cargos al guardar.
+
 ### Limitaciones conocidas
 
 - El sidecar empaquetado se generó y validó para `aarch64-apple-darwin`; el build
@@ -42,3 +52,5 @@ Primera versión funcional.
   defecto: el OCR funciona sobre la página completa.
 - Las releases firmadas requieren configurar `TAURI_SIGNING_PRIVATE_KEY` y un
   repositorio real en `tauri.conf.json`.
+- El extra `ocr` no se instala por defecto (son varios GB); sin él la app usa el
+  motor `native-pymupdf` y lo informa como tal.

@@ -27,8 +27,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# El extra `ocr` habilita inferencia real con GLM-OCR (carga directa del modelo).
+# Pesado: torch + torchvision + transformers. Sin él, la app usa el texto nativo
+# del PDF y lo informa como motor `native-pymupdf`.
 ocr = [
   "torch>=2.4.0",
+  "torchvision>=0.19.0",
   "transformers>=5.0.0",
   "accelerate>=1.0.0",
   "safetensors>=0.4.5",

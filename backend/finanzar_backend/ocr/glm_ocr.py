@@ -103,6 +103,7 @@ class GlmOcrEngine:
 
     def run(self, pages: list[RenderedPage], prompt: str = TEXT_PROMPT) -> list[PageText]:
         import io
+        import re
 
         from PIL import Image
 
@@ -123,19 +124,40 @@ class GlmOcrEngine:
                 return_dict=True,
                 return_tensors="pt",
             ).to(self._model.device)
+            prompt_length = inputs["input_ids"].shape[1]
             with self._torch.no_grad():
                 output = self._model.generate(**inputs, max_new_tokens=self.max_new_tokens)
-            text = self._processor.decode(output[0], skip_special_tokens=True)
+            # Solo los tokens generados: decodificar la secuencia completa mete los
+            # marcadores <|image|> del input en el texto.
+            generated = output[0][prompt_length:]
+            decoded = self._processor.decode(generated, skip_special_tokens=True)
+            decoded = re.sub(r"<\|[^|]*\|>", " ", decoded)
             results.append(
                 PageText(
                     number=page.number,
-                    text=text.strip(),
+                    text=self._dedupe_lines(decoded),
                     engine=self.name,
                     confidence=None,
                     bbox=[0.0, 0.0, float(page.width), float(page.height)],
                 )
             )
         return results
+
+    @staticmethod
+    def _dedupe_lines(text: str) -> str:
+        """Colapsa líneas idénticas repetidas por el decodificador."""
+        seen: set[str] = set()
+        lines: list[str] = []
+        for raw in text.splitlines():
+            line = raw.strip()
+            if not line:
+                continue
+            key = line.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            lines.append(line)
+        return "\n".join(lines)
 
 
 def build_engine(

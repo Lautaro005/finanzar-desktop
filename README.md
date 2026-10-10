@@ -78,6 +78,24 @@ cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings &
 npm run build && npm run test
 ```
 
+## OCR real con GLM-OCR
+
+El pipeline funciona con dos motores y siempre informa cuál usó:
+
+- `glm-ocr`: carga directa del modelo (requiere el extra `ocr`).
+- `native-pymupdf`: texto nativo del PDF (respaldo, sin dependencias pesadas).
+
+Para habilitar GLM-OCR real (descarga torch + torchvision + transformers, varios GB):
+
+```bash
+cd backend && uv pip install -e ".[ocr]"
+uv run python ../scripts/ocr_check.py   # genera un PDF de prueba y muestra el resultado
+```
+
+El script imprime el texto reconocido, los campos con su confianza y evidencia,
+y los movimientos detectados. Debe reportar `Motor usado: glm-ocr` y
+`RESULTADO: GLM-OCR REAL OK`.
+
 ## Licencias
 
 Ver [`docs/licenses.md`](docs/licenses.md). Resumen: código propio MIT; GLM-OCR

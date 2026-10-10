@@ -32,6 +32,30 @@ def checksum_bytes(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
+def _dedupe_transactions(items: list[Any]) -> list[Any]:
+    """Elimina movimientos repetidos que el OCR puede devolver dos veces.
+
+    Normaliza la descripción (solo alfanuméricos, minúsculas) y le quita
+    puntuación colgante, para que variantes como ``Cuota notebook`` y
+    ``Cuota notebook /`` colapsen en una sola. Se conserva la descripción más
+    informativa (la más larga).
+    """
+    import re as _re
+
+    seen: dict[tuple[str, int, str], Any] = {}
+    for item in items:
+        cleaned = _re.sub(r"\s+", " ", item.description.strip())
+        cleaned = _re.sub(r"[\s\-·:|/.,]+$", "", cleaned)
+        if cleaned:
+            item.description = cleaned
+        normalized = _re.sub(r"[^0-9a-záéíóúñ]+", "", item.description.lower())
+        key = (item.occurred_on, item.amount_cents, normalized)
+        current = seen.get(key)
+        if current is None or len(item.description) > len(current.description):
+            seen[key] = item
+    return list(seen.values())
+
+
 class DocumentPipeline:
     def __init__(
         self,
@@ -181,6 +205,11 @@ class DocumentPipeline:
                     "status": "pending",
                 },
             )
+        # El OCR puede devolver la misma línea dos veces; se deduplica antes de guardar.
+        extracted.transactions = _dedupe_transactions(extracted.transactions)
+        extracted.installments = _dedupe_transactions(extracted.installments)
+        extracted.subscriptions = _dedupe_transactions(extracted.subscriptions)
+
         rows = []
         for tx in [*extracted.transactions, *extracted.installments, *extracted.subscriptions]:
             content_hash = hashlib.sha256(
