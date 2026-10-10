@@ -16,8 +16,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: macos-14, target: aarch64-apple-darwin, bundles: "dmg,app" }
-          - { os: macos-13, target: x86_64-apple-darwin, bundles: "dmg,app" }
+          # macOS arm64 e Intel sobre macOS 15: la imagen de macOS 14 está
+          # deprecada (brownouts desde el 2026-10-05, sin soporte desde el
+          # 2026-11-02) y `macos-13` ya no existe, lo que dejaba el job en cola
+          # para siempre y la release vacía.
+          - { os: macos-15, target: aarch64-apple-darwin, bundles: "dmg,app" }
+          - { os: macos-15-intel, target: x86_64-apple-darwin, bundles: "dmg,app" }
           - { os: ubuntu-22.04, target: x86_64-unknown-linux-gnu, bundles: "appimage,deb" }
           - { os: windows-latest, target: x86_64-pc-windows-msvc, bundles: "nsis,msi" }
     steps:

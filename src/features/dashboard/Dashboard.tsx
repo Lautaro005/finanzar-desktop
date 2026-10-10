@@ -3,7 +3,7 @@
 import { useCallback, type JSX } from "react";
 
 import { Icon } from "../../components/Icon";
-import { MonthInput } from "../../components/DateField";
+import { MonthSelect } from "../../components/DateField";
 import { EmptyState, ErrorBlock, LoadingBlock, Panel, ProgressBar, StatusPill } from "../../components/ui";
 import { api } from "../../lib/backend";
 import { formatCents, formatCompact, formatDate, formatDayMonth, monthLabel } from "../../lib/format";
@@ -23,6 +23,26 @@ const INSIGHT_ICON: Record<string, string> = {
   alert: "alert",
   info: "spark",
 };
+
+/** Monto en pesos con el saldo en dólares debajo, cuando lo hay. */
+function AmountStack({
+  cents,
+  usdCents,
+  className = "stat-value",
+  altClassName = "stat-alt",
+}: {
+  cents: number;
+  usdCents: number;
+  className?: string;
+  altClassName?: string;
+}): JSX.Element {
+  return (
+    <>
+      <strong className={className}>{formatCents(cents)}</strong>
+      {usdCents !== 0 && <span className={altClassName}>{formatCents(usdCents, "USD")} en dólares</span>}
+    </>
+  );
+}
 
 export function Dashboard(): JSX.Element {
   const { period, setPeriod, refreshKey, refresh, setRoute, openMoney, setChatOpen, toast } = useApp();
@@ -51,6 +71,10 @@ export function Dashboard(): JSX.Element {
   const totalDocs = data.documents.total;
   const pendingDocs = data.documents.pending;
   const closingProgress = totalDocs === 0 ? 0 : ((totalDocs - pendingDocs) / totalDocs) * 100;
+  // Los saldos en dólares van aparte: la app no convierte moneda.
+  const usdBalance = data.balance.byCurrency?.USD ?? 0;
+  const usdIncome = data.income.byCurrency?.USD ?? 0;
+  const usdPending = data.payments.byCurrency?.USD ?? 0;
 
   return (
     <>
@@ -63,17 +87,16 @@ export function Dashboard(): JSX.Element {
         <div className="heading-actions">
           <div className="period-picker">
             <Icon name="calendar" />
-            <MonthInput value={period} onChange={(next) => setPeriod(next)} ariaLabel="Período" />
+            <MonthSelect value={period} onChange={(next) => setPeriod(next)} ariaLabel="Período" />
           </div>
-          <button type="button" className="secondary-button" onClick={() => setChatOpen(true)}>
-            <Icon name="spark" /> Preguntarle a la IA
-          </button>
-          <button type="button" className="secondary-button" onClick={() => openMoney("income")}>
-            <Icon name="plus" /> Agregar dinero
-          </button>
-          <button type="button" className="primary-button" onClick={() => setRoute("documents")}>
-            <Icon name="plus" /> Cargar resumen
-          </button>
+          <div className="heading-actions-end">
+            <button type="button" className="secondary-button" onClick={() => openMoney("income")}>
+              <Icon name="plus" /> Agregar dinero
+            </button>
+            <button type="button" className="primary-button" onClick={() => setRoute("documents")}>
+              <Icon name="plus" /> Cargar resumen
+            </button>
+          </div>
         </div>
       </div>
 
@@ -121,7 +144,7 @@ export function Dashboard(): JSX.Element {
               <Icon name="wallet" />
             </span>
           </div>
-          <strong className="stat-value">{formatCents(data.balance.totalCents)}</strong>
+          <AmountStack cents={data.balance.totalCents} usdCents={usdBalance} />
           <div className="stat-foot">
             <span>{data.balance.accounts.length} cuentas activas</span>
           </div>
@@ -133,7 +156,7 @@ export function Dashboard(): JSX.Element {
               <Icon name="arrow-down" />
             </span>
           </div>
-          <strong className="stat-value">{formatCents(data.income.monthCents)}</strong>
+          <AmountStack cents={data.income.monthCents} usdCents={usdIncome} />
           <div className="stat-foot">
             <span>{data.income.nextCredit ? `próximo ${formatDate(data.income.nextCredit.date)}` : "sin recurrencias"}</span>
           </div>
@@ -145,7 +168,7 @@ export function Dashboard(): JSX.Element {
               <Icon name="credit-card" />
             </span>
           </div>
-          <strong className="stat-value">{formatCents(data.payments.pendingCents)}</strong>
+          <AmountStack cents={data.payments.pendingCents} usdCents={usdPending} />
           <div className="stat-foot">
             <span>{data.payments.pendingCount} vencimientos</span>
           </div>
@@ -192,13 +215,18 @@ export function Dashboard(): JSX.Element {
                         {account.masked_number ? ` · ${account.masked_number}` : ""}
                       </small>
                     </span>
-                    <strong className="account-balance">{formatCents(account.balance_cents)}</strong>
+                    <strong className="account-balance">{formatCents(account.balance_cents, account.currency)}</strong>
                   </div>
                 ))}
               </div>
               <div className="accounts-total">
                 <span>Total disponible</span>
-                <strong>{formatCents(data.balance.totalCents)}</strong>
+                <AmountStack
+                  cents={data.balance.totalCents}
+                  usdCents={usdBalance}
+                  className="accounts-total-value"
+                  altClassName="accounts-total-alt"
+                />
               </div>
             </>
           )}
@@ -276,7 +304,7 @@ export function Dashboard(): JSX.Element {
                       <strong>Vencimiento {payment.kind}</strong>
                       <span>{formatDate(payment.due_date)}</span>
                     </div>
-                    <strong className="payment-amount">{formatCents(payment.amount_cents)}</strong>
+                    <strong className="payment-amount">{formatCents(payment.amount_cents, payment.currency)}</strong>
                     <button
                       type="button"
                       className="check-button"

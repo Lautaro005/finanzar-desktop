@@ -24,6 +24,7 @@ export function Settings(): JSX.Element {
   const models = useAsync(() => api.models(), [refreshKey]);
   const goals = useAsync(() => api.goals(), [refreshKey]);
   const settings = useAsync(() => api.settings(), [refreshKey]);
+  const embeddings = useAsync(() => api.embeddings(), [refreshKey]);
   const [busy, setBusy] = useState<string | null>(null);
   const [threshold, setThreshold] = useState("");
   const [goalName, setGoalName] = useState("Fondo de emergencia");
@@ -71,6 +72,32 @@ export function Settings(): JSX.Element {
       refresh();
     } catch (error) {
       toast(error instanceof Error ? error.message : "No se pudo iniciar el copiloto", "error");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const startEmbeddings = async () => {
+    setBusy("embeddings");
+    try {
+      const result = await api.startEmbeddings();
+      if (result.available) {
+        toast(
+          result.rebuilt
+            ? "Embeddings activados: la memoria se reindexó con vectores de 768 dimensiones."
+            : "Embeddings activados.",
+        );
+      } else {
+        toast(
+          result.installed
+            ? "El runtime no pudo cargar el modelo de embeddings."
+            : "Primero descargá EmbeddingGemma-2.",
+          "error",
+        );
+      }
+      refresh();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "No se pudieron activar los embeddings", "error");
     } finally {
       setBusy(null);
     }
@@ -205,6 +232,33 @@ export function Settings(): JSX.Element {
                 </div>
                 <button type="button" className="secondary-button" onClick={startLlm} disabled={busy === "llm"}>
                   <Icon name="spark" /> {busy === "llm" ? "Iniciando…" : "Iniciar copiloto"}
+                </button>
+              </div>
+              <div className="list-row">
+                <div className="list-row-copy">
+                  <strong>Memoria con embeddings</strong>
+                  <small>
+                    {embeddings.data?.available
+                      ? "EmbeddingGemma-2 activo (768 dimensiones): el copiloto busca por significado."
+                      : embeddings.data?.installed
+                        ? "Modelo descargado, servidor de embeddings apagado."
+                        : "Sin el modelo: la memoria usa el embedding por hashing (sólo texto)."}
+                  </small>
+                  {embeddings.data && (
+                    <small className="settings-subline">
+                      {embeddings.data.memory.backend} · {embeddings.data.memory.dimension} dims ·{" "}
+                      {embeddings.data.memory.documents.statement_chunks ?? 0} fragmentos de resúmenes
+                    </small>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={startEmbeddings}
+                  disabled={busy === "embeddings" || !embeddings.data?.installed}
+                >
+                  <Icon name="layers" />{" "}
+                  {busy === "embeddings" ? "Activando…" : embeddings.data?.available ? "Reactivar" : "Activar"}
                 </button>
               </div>
             </div>

@@ -1,7 +1,7 @@
 {
   "name": "finanzar-desktop",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.2.5",
   "type": "module",
   "description": "FinanzAR Desktop — bóveda financiera local-first para macOS",
   "license": "AGPL-3.0-only",

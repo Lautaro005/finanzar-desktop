@@ -1,6 +1,6 @@
 /** Documentos: importar PDF, ejecutar OCR, revisar y confirmar. */
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 
 import { Icon } from "../../components/Icon";
 import { DateInput } from "../../components/DateField";
@@ -46,13 +46,47 @@ function confidenceClass(confidence: number | null): string {
   return "low";
 }
 
+/** Lista JSON guardada en app_settings (tarjetas o categorías del perfil). */
+function readList(raw: string | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const value = JSON.parse(raw);
+    return Array.isArray(value) ? value.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Valor estable para una marca propia ("Naranja" → "naranja"). */
+function slug(value: string): string {
+  return value.trim().toLowerCase();
+}
+
 export function Documents(): JSX.Element {
   const { toast, refresh, refreshKey } = useApp();
   const documents = useAsync(() => api.documents(), [refreshKey]);
+  const settings = useAsync(() => api.settings(), []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [deletingDoc, setDeletingDoc] = useState<Statement | null>(null);
+
+  // Las tarjetas y categorías del perfil definen las opciones de la revisión.
+  const brandOptions = useMemo(() => {
+    const base = FIELD_CHOICES.brand;
+    const stored = readList(settings.data?.settings.user_brands);
+    if (stored.length === 0) return base;
+    const known = new Set(base.map((option) => option.label.toLowerCase()));
+    const extra = stored
+      .filter((brand) => !known.has(brand.toLowerCase()))
+      .map((brand) => ({ value: slug(brand), label: brand }));
+    return [...base, ...extra];
+  }, [settings.data]);
+
+  const categoryOptions = useMemo(() => {
+    const stored = readList(settings.data?.settings.user_categories);
+    return stored.map((category) => ({ value: category, label: category }));
+  }, [settings.data]);
 
   const list = documents.data?.documents ?? [];
   const selected = useMemo(
@@ -202,6 +236,7 @@ export function Documents(): JSX.Element {
             <DocumentDetail
               statement={selected}
               fields={review.data?.fields ?? []}
+              transactions={review.data?.transactions ?? []}
               busy={busy}
               onOcr={() => runOcr(selected.id)}
               onReview={() => setReviewOpen(true)}
@@ -244,6 +279,8 @@ export function Documents(): JSX.Element {
           statement={selected}
           fields={review.data?.fields ?? []}
           transactions={review.data?.transactions ?? []}
+          brandOptions={brandOptions}
+          categoryOptions={categoryOptions}
           onClose={() => setReviewOpen(false)}
           onConfirm={() => confirm(selected.id)}
           onSaved={() => {
@@ -261,6 +298,7 @@ export function Documents(): JSX.Element {
 function DocumentDetail({
   statement,
   fields,
+  transactions,
   busy,
   onOcr,
   onReview,
@@ -268,6 +306,7 @@ function DocumentDetail({
 }: {
   statement: Statement;
   fields: StatementField[];
+  transactions: Transaction[];
   busy: string | null;
   onOcr: () => void;
   onReview: () => void;
@@ -276,6 +315,14 @@ function DocumentDetail({
   const stages = ["imported", "ocr", "extracted", "review", "confirmed"];
   const currentIndex = Math.max(0, stages.indexOf(statement.status === "error" ? "review" : statement.status));
   const critical = fields.filter((field) => ["total", "minimum", "due_date", "close_date"].includes(field.field_key));
+  const [view, setView] = useState<"info" | "movements">("info");
+
+  const consumos = useMemo(
+    () => transactions.filter((row) => row.kind !== "tax" && row.kind !== "payment"),
+    [transactions],
+  );
+  const impuestos = useMemo(() => transactions.filter((row) => row.kind === "tax"), [transactions]);
+  const loading = Boolean(busy?.startsWith("ocr") || busy === "import");
 
   return (
     <div className="document-detail-inner">
@@ -297,37 +344,92 @@ function DocumentDetail({
         </div>
       </div>
 
-      <div className="extract-panel">
-        {critical.length === 0 ? (
-          <EmptyState icon="scan" title="Sin campos extraídos" body="Ejecutá el OCR para extraer los datos del resumen." />
-        ) : (
-          <div className="field-grid">
-            {critical.map((field) => (
-              <div className="detail-field" key={field.field_key}>
-                <span>{FIELD_LABELS[field.field_key] ?? field.field_key}</span>
-                <strong>
-                  {field.value_type === "money" && field.field_value
-                    ? formatCents(Math.round(Number(field.field_value) * 100))
-                    : field.field_value ?? "—"}
-                </strong>
-                <em className={`confidence ${confidenceClass(field.confidence)}`}>
-                  {field.confidence !== null ? `${Math.round(field.confidence * 100)}%` : "sin confianza"}
-                </em>
-              </div>
-            ))}
-          </div>
-        )}
+      {loading && (
+        <div className="pdf-loading" role="status" aria-live="polite">
+          <PdfSkeleton />
+          <p>Leyendo el resumen en tu equipo…</p>
+        </div>
+      )}
+
+      <div className="detail-view-toggle" role="tablist" aria-label="Qué ver del documento">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "info"}
+          className={`toggle-tab ${view === "info" ? "active" : ""}`}
+          onClick={() => setView("info")}
+        >
+          <Icon name="file" /> Información
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "movements"}
+          className={`toggle-tab ${view === "movements" ? "active" : ""}`}
+          onClick={() => setView("movements")}
+        >
+          <Icon name="list" /> Movimientos ({transactions.length})
+        </button>
       </div>
 
+      {view === "info" ? (
+        <div className="extract-panel">
+          {critical.length === 0 ? (
+            <EmptyState icon="scan" title="Sin campos extraídos" body="Ejecutá el OCR para extraer los datos del resumen." />
+          ) : (
+            <div className="field-grid">
+              {critical.map((field) => (
+                <div className="detail-field" key={field.field_key}>
+                  <span>{FIELD_LABELS[field.field_key] ?? field.field_key}</span>
+                  <strong>
+                    {field.value_type === "money" && field.field_value
+                      ? formatCents(Math.round(Number(field.field_value) * 100))
+                      : field.field_value ?? "—"}
+                  </strong>
+                  <em className={`confidence ${confidenceClass(field.confidence)}`}>
+                    {field.confidence !== null ? `${Math.round(field.confidence * 100)}%` : "sin confianza"}
+                  </em>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="detail-movements">
+          {transactions.length === 0 ? (
+            <EmptyState
+              icon="receipt"
+              title="Sin movimientos"
+              body="Ejecutá el OCR o marcá una zona del PDF para extraer consumos."
+            />
+          ) : (
+            <div className="detail-movement-groups">
+              <DetailMovementGroup title="Consumos" rows={consumos} />
+              <DetailMovementGroup title="Impuestos y percepciones" rows={impuestos} />
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="detail-stages">
-        {stages.map((stage, index) => (
-          <Fragment key={stage}>
-            <span className={`stage ${index < currentIndex ? "done" : index === currentIndex ? "active" : ""}`}>
-              <span className="stage-dot">{index <= currentIndex ? <Icon name="check" /> : index + 1}</span>
-              {stage === "imported" ? "Importado" : stage === "ocr" ? "OCR" : stage === "extracted" ? "Extracción" : stage === "review" ? "Revisión" : "Confirmado"}
+        {stages.map((stage) => (
+          <span
+            key={stage}
+            className={`stage ${stages.indexOf(stage) < currentIndex ? "done" : stages.indexOf(stage) === currentIndex ? "active" : ""}`}
+          >
+            <span className="stage-dot">
+              {stages.indexOf(stage) <= currentIndex ? <Icon name="check" /> : stages.indexOf(stage) + 1}
             </span>
-            {index < stages.length - 1 && <i className={`stage-line ${index < currentIndex ? "done" : ""}`} />}
-          </Fragment>
+            {stage === "imported"
+              ? "Importado"
+              : stage === "ocr"
+                ? "OCR"
+                : stage === "extracted"
+                  ? "Extracción"
+                  : stage === "review"
+                    ? "Revisión"
+                    : "Confirmado"}
+          </span>
         ))}
       </div>
 
@@ -342,10 +444,54 @@ function DocumentDetail({
   );
 }
 
+/** Lista de movimientos del detalle, separada por consumos e impuestos. */
+function DetailMovementGroup({ title, rows }: { title: string; rows: Transaction[] }): JSX.Element {
+  const total = rows.reduce((acc, row) => acc + row.amount_cents, 0);
+  return (
+    <section className="detail-movement-group">
+      <header>
+        <strong>{title}</strong>
+        <span>
+          {rows.length} · {formatCents(total)}
+        </span>
+      </header>
+      {rows.length === 0 ? (
+        <p className="detail-movement-empty">Sin registros.</p>
+      ) : (
+        <ul>
+          {rows.map((row) => (
+            <li key={row.id}>
+              <span className="detail-movement-date">{formatDate(row.occurred_on)}</span>
+              <span className="detail-movement-copy">{row.description}</span>
+              <strong className="detail-movement-amount">{formatCents(row.amount_cents, row.currency)}</strong>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** Placeholder con animación mientras el PDF se procesa. */
+function PdfSkeleton(): JSX.Element {
+  return (
+    <div className="pdf-skeleton" aria-hidden="true">
+      <span className="pdf-skeleton-bar long" />
+      <span className="pdf-skeleton-bar medium" />
+      <span className="pdf-skeleton-bar" />
+      <span className="pdf-skeleton-bar long" />
+      <span className="pdf-skeleton-bar short" />
+      <span className="pdf-skeleton-bar medium" />
+    </div>
+  );
+}
+
 function ReviewModal({
   statement,
   fields,
   transactions,
+  brandOptions,
+  categoryOptions,
   onClose,
   onConfirm,
   onSaved,
@@ -355,6 +501,8 @@ function ReviewModal({
   statement: Statement;
   fields: StatementField[];
   transactions: Transaction[];
+  brandOptions: Array<{ value: string; label: string }>;
+  categoryOptions: Array<{ value: string; label: string }>;
   onClose: () => void;
   onConfirm: () => void;
   onSaved: () => void;
@@ -428,6 +576,13 @@ function ReviewModal({
                   <DateInput
                     value={ddmmToIso(draft[field.field_key] ?? "") ?? draft[field.field_key]}
                     onChange={(iso) => setDraft((current) => ({ ...current, [field.field_key]: isoToDdmm(iso) }))}
+                    ariaLabel={FIELD_LABELS[field.field_key] ?? field.field_key}
+                  />
+                ) : field.field_key === "brand" ? (
+                  <Select
+                    value={draft[field.field_key] ?? ""}
+                    options={brandOptions}
+                    onChange={(value) => setDraft((current) => ({ ...current, [field.field_key]: value }))}
                     ariaLabel={FIELD_LABELS[field.field_key] ?? field.field_key}
                   />
                 ) : FIELD_CHOICES[field.field_key] ? (
@@ -509,6 +664,7 @@ function ReviewModal({
       {editingTx && (
         <TransactionEditModal
           transaction={editingTx}
+          categoryOptions={categoryOptions}
           onClose={() => setEditingTx(null)}
           onSaved={(updated) => {
             setRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
@@ -578,11 +734,13 @@ async function removeTransaction(
 /** Edición de un movimiento leído del resumen. */
 function TransactionEditModal({
   transaction,
+  categoryOptions,
   onClose,
   onSaved,
   onError,
 }: {
   transaction: Transaction;
+  categoryOptions: Array<{ value: string; label: string }>;
   onClose: () => void;
   onSaved: (updated: Transaction) => void;
   onError: (message: string) => void;
@@ -592,7 +750,17 @@ function TransactionEditModal({
   const [occurredOn, setOccurredOn] = useState(transaction.occurred_on.slice(0, 10));
   const [currency, setCurrency] = useState(transaction.currency);
   const [kind, setKind] = useState(transaction.kind);
+  const [category, setCategory] = useState(transaction.category ?? "");
   const [saving, setSaving] = useState(false);
+
+  // Las categorías del perfil, más la que ya tenga el movimiento.
+  const options = useMemo(() => {
+    const base = [...categoryOptions];
+    if (category && !base.some((option) => option.value === category)) {
+      base.unshift({ value: category, label: category });
+    }
+    return base;
+  }, [categoryOptions, category]);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -608,6 +776,8 @@ function TransactionEditModal({
         amountCents: Math.round(parsed * 100),
         occurredOn,
         kind,
+        category,
+        currency,
       });
       onSaved({ ...transaction, ...result.transaction, currency });
     } catch (error) {
@@ -668,6 +838,17 @@ function TransactionEditModal({
             ariaLabel="Tipo de movimiento"
           />
         </label>
+        {options.length > 0 && (
+          <label>
+            <span>Categoría</span>
+            <Select
+              value={category}
+              options={options}
+              onChange={setCategory}
+              ariaLabel="Categoría del movimiento"
+            />
+          </label>
+        )}
       </form>
     </Modal>
   );
@@ -819,7 +1000,10 @@ function PdfViewer({
       </div>
 
       {loading ? (
-        <LoadingBlock message="Abriendo el PDF…" />
+        <div className="pdf-loading" role="status" aria-live="polite">
+          <PdfSkeleton />
+          <p>Abriendo el PDF…</p>
+        </div>
       ) : image ? (
         <div className="pdf-surface">
           <div

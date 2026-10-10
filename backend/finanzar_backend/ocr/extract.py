@@ -144,6 +144,7 @@ _JUNK_KEYWORDS = (
     "saldo anterior",
     "saldo actual",
     "su pago",
+    "pago anterior",
     "pago minimo",
     "pago mín",
     "total consumos",
@@ -151,6 +152,11 @@ _JUNK_KEYWORDS = (
     "próximo",
     "cierre anterior",
     "vencimiento anterior",
+    "dev.imp",
+    "dev. imp",
+    "devolucion imp",
+    "devolución imp",
+    "reintegro",
     "condiciones vigentes",
     "llame",
     "http",
@@ -244,8 +250,18 @@ def guess_brand(text: str) -> str:
     return "other"
 
 
-def guess_category(description: str) -> str:
+def guess_category(description: str, categories: list[str] | None = None) -> str:
+    """Categoría del consumo: primero las del perfil, después las reglas.
+
+    ``categories`` son las categorías que la persona cargó en su perfil: si el
+    nombre de una aparece en la descripción, gana esa. El resto se resuelve con
+    la tabla de comercios conocidos.
+    """
     lowered = description.lower()
+    for category in categories or []:
+        name = category.strip()
+        if name and name.lower() in lowered:
+            return name
     table = {
         "Alimentación": ("super", "mercado", "coto", "disco", "jumbo", "dia", "carrefour", "la plaza"),
         "Transporte": ("uber", "cabify", "taxi", "sube", "peaje", "nafta", "ypf", "shell", "combustible"),
@@ -524,6 +540,9 @@ EXTRACTION_SYSTEM_PROMPT = (
     "IIBB PERCEP-BSAS, DB.RG 5617/RG 5463, impuesto de sellos, retenciones. Moneda 'ARS' y "
     "kind 'tax'. Si el resumen lista dos veces un impuesto idéntico, son dos cargos.\n"
     "- Las devoluciones (DEV.IMP., reintegro) llevan importe negativo y kind 'tax'.\n"
+    "- Cuando el resumen ya cobró el mes anterior, arriba aparece el bloque del período "
+    "anterior: 'SALDO ANTERIOR' + 'SU PAGO' + la devolución de impuestos ('DEV.IMP.'). Ese "
+    "bloque ya está saldado y NO se carga como movimiento: no es un consumo de este período.\n"
     "- Ignorá lo que no es consumo: SALDO ANTERIOR, SU PAGO, SALDO ACTUAL, PAGO MÍNIMO, TOTAL "
     "CONSUMOS, PRÓXIMO VENCIMIENTO/CIERRE, límites, TNA/TEM/TEA, planes de cuotas del "
     "financiado y el texto legal del pie.\n"

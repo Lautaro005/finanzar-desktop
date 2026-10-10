@@ -199,8 +199,13 @@ export interface Dashboard {
     byCurrency: Record<string, number>;
     accounts: Array<Account & { balance_cents: number }>;
   };
-  income: { monthCents: number; recurring: RecurringIncome[]; nextCredit: { date: string; amount_cents: number; name: string } | null };
-  payments: { pendingCents: number; pendingCount: number; paidCents: number };
+  income: {
+    monthCents: number;
+    byCurrency?: Record<string, number>;
+    recurring: RecurringIncome[];
+    nextCredit: { date: string; amount_cents: number; name: string } | null;
+  };
+  payments: { pendingCents: number; pendingCount: number; paidCents: number; byCurrency?: Record<string, number> };
   upcomingPayments: Payment[];
   projection: Projection;
   projections: Record<string, Projection>;
@@ -210,6 +215,18 @@ export interface Dashboard {
   documents: { total: number; pending: number; pendingList: Array<{ id: string; filename: string; status: string }> };
   insights: Insight[];
   calendar: CalendarEvent[];
+}
+
+export interface EmbeddingsStatus {
+  installed: boolean;
+  available: boolean;
+  model: string | null;
+  memory: {
+    backend: string;
+    embedder: string;
+    dimension: number;
+    documents: Record<string, number>;
+  };
 }
 
 export interface CopilotSource {

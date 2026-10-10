@@ -497,21 +497,28 @@ class Repository:
         kind: str | None = None,
         confirmed: bool | None = None,
     ) -> list[dict[str, Any]]:
-        sql = "SELECT * FROM transactions WHERE user_id = ?"
+        # El período filtra por el mes del movimiento **o** por el período del
+        # resumen: un resumen de tarjeta trae consumos del mes anterior y, si no
+        # se contempla, la pantalla de movimientos mostraba sólo una parte de lo
+        # que se había extraído.
+        sql = "SELECT t.* FROM transactions t WHERE t.user_id = ?"
         params: list[Any] = [self.user_id]
         if period:
-            sql += " AND substr(occurred_on, 1, 7) = ?"
-            params.append(period)
+            sql += (
+                " AND (substr(t.occurred_on, 1, 7) = ? OR EXISTS ("
+                "SELECT 1 FROM statements s WHERE s.id = t.statement_id AND s.period = ?))"
+            )
+            params.extend([period, period])
         if card_id:
-            sql += " AND card_id = ?"
+            sql += " AND t.card_id = ?"
             params.append(card_id)
         if kind:
-            sql += " AND kind = ?"
+            sql += " AND t.kind = ?"
             params.append(kind)
         if confirmed is not None:
-            sql += " AND confirmed = ?"
+            sql += " AND t.confirmed = ?"
             params.append(1 if confirmed else 0)
-        sql += " ORDER BY occurred_on DESC, description"
+        sql += " ORDER BY t.occurred_on DESC, t.description"
         return [_row_to_dict(r) for r in self.db.query(sql, params)]
 
     def update_transaction(self, tx_id: str, patch: dict[str, Any]) -> dict[str, Any] | None:

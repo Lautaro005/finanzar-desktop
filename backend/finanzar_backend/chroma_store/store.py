@@ -18,7 +18,7 @@ import hashlib
 import json
 import math
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
@@ -40,7 +40,11 @@ def _tokens(text: str) -> list[str]:
 
 
 def embed(text: str) -> list[float]:
-    """Embedding determinístico por hashing, normalizado a norma unitaria."""
+    """Embedding determinístico por hashing, normalizado a norma unitaria.
+
+    Es el respaldo cuando no hay un modelo de embeddings instalado: funciona
+    offline y sin cargar nada en memoria, pero solo capta coincidencias léxicas.
+    """
     vector = [0.0] * EMBED_DIM
     for token in _tokens(text):
         digest = hashlib.blake2b(token.encode("utf-8"), digest_size=8).digest()
@@ -53,6 +57,9 @@ def embed(text: str) -> list[float]:
     return [value / norm for value in vector]
 
 
+HASH_EMBEDDER = "hash-256"
+
+
 def _content_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -60,8 +67,9 @@ def _content_hash(text: str) -> str:
 class _JsonFallbackStore:
     """Fallback mínimo cuando ChromaDB no está instalado."""
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, embedder: Callable[[str], list[float]] = embed) -> None:
         self.file = path / "fallback_store.json"
+        self.embedder = embedder
         self.data: dict[str, list[dict[str, Any]]] = {name: [] for name in COLLECTIONS}
         if self.file.exists():
             self.data = json.loads(self.file.read_text(encoding="utf-8"))
@@ -115,13 +123,27 @@ class _JsonFallbackStore:
 
 
 class MemoryStore:
-    def __init__(self, path: Path) -> None:
+    def __init__(
+        self,
+        path: Path,
+        embedder: Callable[[str], list[float]] | None = None,
+        embedder_id: str = HASH_EMBEDDER,
+    ) -> None:
         self.path = Path(path)
         self.path.mkdir(parents=True, exist_ok=True)
         self.backend = "chromadb"
         self._client: Any = None
         self._collections: dict[str, Any] = {}
         self._fallback: _JsonFallbackStore | None = None
+        self._embedder: Callable[[str], list[float]] = embedder or embed
+        self._embedder_id = embedder_id
+        self._marker = self.path / "embedder.json"
+        stored = self._read_marker()
+        # Un cambio de embedder cambia la dimensión de los vectores: las
+        # colecciones viejas no se pueden mezclar, así que se rearman (la memoria
+        # se reconstruye la próxima vez que se confirma un resumen).
+        self.dim = stored.get("dim") or EMBED_DIM
+        self._dim_mismatch = bool(stored.get("dim")) and int(stored["dim"]) != self._dim_for(self._embedder)
         try:  # pragma: no cover - depende del entorno
             import chromadb  # type: ignore
 
@@ -132,7 +154,54 @@ class MemoryStore:
                 )
         except Exception:  # pragma: no cover - fallback honesto
             self.backend = "json-fallback"
-            self._fallback = _JsonFallbackStore(self.path)
+            self._fallback = _JsonFallbackStore(self.path, self._embedder)
+        if self._dim_mismatch:
+            self.reset()
+        self._write_marker()
+
+    # -- embedder ---------------------------------------------------------
+    def _read_marker(self) -> dict[str, Any]:
+        if not self._marker.exists():
+            return {}
+        try:
+            return json.loads(self._marker.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:  # pragma: no cover - archivo corrupto
+            return {}
+
+    @staticmethod
+    def _dim_for(embedder: Callable[[str], list[float]]) -> int:
+        dim = getattr(embedder, "dimension", None) or getattr(embedder, "dim", None)
+        return int(dim) if dim else EMBED_DIM
+
+    def _write_marker(self) -> None:
+        self.dim = self._dim_for(self._embedder)
+        self._marker.write_text(
+            json.dumps({"embedder": self._embedder_id, "dim": self.dim}), encoding="utf-8"
+        )
+
+    def set_embedder(self, embedder: Callable[[str], list[float]], embedder_id: str) -> bool:
+        """Activa un embedder (embeddinggemma). ``True`` si hubo que rearmar.
+
+        Si la dimensión cambia, las colecciones existentes quedan inservibles y se
+        reconstruyen; los fragmentos vuelven a indexarse al confirmar resúmenes.
+        """
+        if embedder_id == self._embedder_id:
+            return False
+        self._embedder = embedder
+        self._embedder_id = embedder_id
+        if self._fallback is not None:
+            self._fallback.embedder = embedder
+        changed = self._dim_for(embedder) != self.dim
+        if changed:
+            self.reset()
+        self._write_marker()
+        return changed
+
+    def embed_text(self, text: str) -> list[float]:
+        try:
+            return self._embedder(text)
+        except Exception:  # pragma: no cover - el servidor de embeddings se cayó
+            return embed(text)
 
     # -- escritura --------------------------------------------------------
     def index_document(
@@ -152,13 +221,13 @@ class MemoryStore:
         if self._fallback is not None:
             self._fallback.upsert(
                 collection,
-                [{"id": doc_id, "document": text, "metadata": enriched, "embedding": embed(text)}],
+                [{"id": doc_id, "document": text, "metadata": enriched, "embedding": self.embed_text(text)}],
             )
             return content_hash
         self._collections[collection].upsert(
             ids=[doc_id],
             documents=[text],
-            embeddings=[embed(text)],
+            embeddings=[self.embed_text(text)],
             metadatas=[enriched],
         )
         return content_hash
@@ -195,7 +264,7 @@ class MemoryStore:
             where["card_id"] = card_id
         if confirmed_only:
             where["confirmed"] = True
-        embedding = embed(text)
+        embedding = self.embed_text(text)
         if self._fallback is not None:
             return self._fallback.query(collection, embedding, where=where or None, limit=limit)
         clauses = [{key: value} for key, value in where.items()]
@@ -229,6 +298,15 @@ class MemoryStore:
         if self._fallback is not None:
             return self._fallback.count(collection)
         return int(self._collections[collection].count())
+
+    def status(self) -> dict[str, Any]:
+        """Backend y embedder activo, para informarlo en la interfaz."""
+        return {
+            "backend": self.backend,
+            "embedder": self._embedder_id,
+            "dimension": self.dim,
+            "documents": {name: self.count(name) for name in COLLECTIONS},
+        }
 
     def delete_where(self, collection: str, where: dict[str, Any]) -> None:
         if self._fallback is not None:

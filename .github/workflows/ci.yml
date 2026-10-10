@@ -53,8 +53,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: macos-14, target: aarch64-apple-darwin }
-          - { os: macos-14, target: x86_64-apple-darwin }
+          # macOS 14 está deprecado por GitHub (brownouts desde el 2026-10-05 y
+          # sin soporte desde el 2026-11-02): se usan las imágenes de macOS 15.
+          - { os: macos-15, target: aarch64-apple-darwin }
+          - { os: macos-15-intel, target: x86_64-apple-darwin }
           - { os: ubuntu-22.04, target: x86_64-unknown-linux-gnu }
           - { os: windows-latest, target: x86_64-pc-windows-msvc }
     steps:

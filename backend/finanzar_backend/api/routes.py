@@ -41,6 +41,24 @@ def _money(cents: int | None, amount: str | None) -> int:
     raise ValidationError("Falta el importe (amountCents o amount)")
 
 
+def _require_account(context: AppContext, account_id: str | None) -> str:
+    """Un ingreso o sueldo va a una cuenta.
+
+    Sin cuenta, la plata entra al balance pero no aparece en ninguna cuenta (esa
+    fue la confusión: el sueldo se registraba y las cuentas quedaban en cero).
+    """
+    if not context.repo.list_accounts():
+        raise ValidationError(
+            "Primero agregá una cuenta: el ingreso se acredita en la cuenta que elijas.",
+            code="account_required",
+        )
+    if not account_id:
+        raise ValidationError("Elegí la cuenta donde entra el ingreso", code="account_required")
+    if context.repo.get_account(account_id) is None:
+        raise ValidationError("La cuenta elegida no existe", code="account_not_found")
+    return account_id
+
+
 # --- modelos de entrada -------------------------------------------------
 class AccountCreate(BaseModel):
     name: str
@@ -231,6 +249,18 @@ async def llm_status(request: Request) -> Any:
     )
 
 
+@router.get("/api/llm/embeddings")
+async def embeddings_status(request: Request) -> Any:
+    """Estado de los embeddings locales (embeddinggemma-2) y de la memoria."""
+    return ok(ctx(request).embeddings_status())
+
+
+@router.post("/api/llm/embeddings/start")
+async def embeddings_start(request: Request) -> Any:
+    """Levanta el servidor de embeddings si el modelo está descargado."""
+    return ok(await asyncio.to_thread(ctx(request).start_embeddings))
+
+
 @router.get("/api/bootstrap")
 async def bootstrap(request: Request) -> Any:
     context = ctx(request)
@@ -242,6 +272,7 @@ async def bootstrap(request: Request) -> Any:
             "models": context.downloader.statuses(),
             "runtime": context.downloader.runtime_status(_target()),
             "llmAvailable": bool(context.llama_client and context.llama_client.available()),
+            "embeddings": context.embeddings_status(),
             "settings": context.repo.all_settings(),
             "period": period_of(today()),
         }
@@ -387,10 +418,11 @@ async def create_income(request: Request, payload: IncomeCreate) -> Any:
 
     context = ctx(request)
     amount_cents = _money(payload.amountCents, payload.amount)
+    account_id = _require_account(context, payload.accountId)
     entry = context.repo.upsert_income_entry(
         new_id("inc"),
         {
-            "account_id": payload.accountId,
+            "account_id": account_id,
             "source": payload.source,
             "kind": payload.kind,
             "amount_cents": amount_cents,
@@ -407,6 +439,7 @@ async def create_recurring_income(request: Request, payload: RecurringIncomeCrea
     from ..core.ids import new_id
 
     context = ctx(request)
+    account_id = _require_account(context, payload.accountId)
     income = context.repo.create_recurring_income(
         new_id("rec"),
         {
@@ -414,7 +447,7 @@ async def create_recurring_income(request: Request, payload: RecurringIncomeCrea
             "source": payload.source or payload.name,
             "kind": payload.kind,
             "amount_cents": _money(payload.amountCents, payload.amount),
-            "account_id": payload.accountId,
+            "account_id": account_id,
             "currency": payload.currency,
             "day_of_month": payload.dayOfMonth,
             "start_date": payload.startDate,
@@ -432,6 +465,8 @@ async def create_recurring_income(request: Request, payload: RecurringIncomeCrea
 @router.patch("/api/incomes/recurring/{income_id}")
 async def patch_recurring_income(request: Request, income_id: str, payload: dict[str, Any]) -> Any:
     context = ctx(request)
+    if payload.get("accountId"):
+        _require_account(context, payload["accountId"])
     mapping = {
         "name": "name",
         "source": "source",
@@ -457,6 +492,8 @@ async def patch_recurring_income(request: Request, income_id: str, payload: dict
 @router.patch("/api/incomes/{entry_id}")
 async def patch_income(request: Request, entry_id: str, payload: IncomePatch) -> Any:
     context = ctx(request)
+    if payload.accountId is not None:
+        _require_account(context, payload.accountId)
     patch: dict[str, Any] = {
         "source": payload.source,
         "kind": payload.kind,

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
 import re
 from pathlib import Path
@@ -174,6 +175,7 @@ class DocumentPipeline:
                 if extra is not None:
                     extracted = extract_mod.merge_missing(extracted, extra)
 
+            self._apply_categories(extracted)
             self._persist_extraction(statement_id, extracted)
             self._persist_payments(statement_id, extracted)
             self.repo.update_statement(
@@ -207,6 +209,27 @@ class DocumentPipeline:
     def _field_value(self, extracted: extract_mod.ExtractedStatement, key: str) -> Any:
         field = extracted.field_map().get(key)
         return field.value if field else None
+
+    def user_categories(self) -> list[str]:
+        """Categorías que la persona cargó en su perfil (JSON en app_settings)."""
+        raw = self.repo.get_setting("user_categories") or "[]"
+        try:
+            value = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(value, list):
+            return []
+        return [str(item).strip() for item in value if str(item).strip()]
+
+    def _apply_categories(self, extracted: extract_mod.ExtractedStatement) -> None:
+        """Categoriza los movimientos leídos con las reglas + el perfil.
+
+        El resumen no trae categoría: se asigna sola al importar, priorizando las
+        categorías propias y cayendo a la tabla de comercios conocidos.
+        """
+        categories = self.user_categories()
+        for tx in [*extracted.transactions, *extracted.installments, *extracted.subscriptions]:
+            tx.category = extract_mod.guess_category(tx.description, categories)
 
     @staticmethod
     def _missing_critical(extracted: extract_mod.ExtractedStatement) -> bool:
@@ -411,7 +434,7 @@ class DocumentPipeline:
                         "occurred_on": tx.occurred_on,
                         "description": tx.description,
                         "normalized_description": tx.description.lower(),
-                        "category": tx.category,
+                        "category": extract_mod.guess_category(tx.description, self.user_categories()),
                         "amount_cents": tx.amount_cents,
                         "currency": tx.currency,
                         "installment_number": tx.installment_number,
@@ -439,6 +462,19 @@ class DocumentPipeline:
             "added": len(rows),
             "skipped": skipped,
         }
+
+    def reindex_memory(self) -> int:
+        """Vuelve a indexar los resúmenes confirmados.
+
+        Se usa cuando cambia el embedder (por ejemplo al activar
+        embeddinggemma-2): los fragmentos viejos tenían otra dimensión.
+        """
+        total = 0
+        for statement in self.repo.list_statements():
+            if statement.get("status") != "confirmed":
+                continue
+            total += self._index_confirmed(statement["id"])
+        return total
 
     def delete_document(self, statement_id: str) -> dict[str, Any]:
         """Borra un documento: la fila, sus movimientos, el PDF y sus fragmentos."""
@@ -481,7 +517,7 @@ class DocumentPipeline:
                     "occurred_on": occurred_on,
                     "description": description[:120],
                     "normalized_description": description.lower(),
-                    "category": item.get("category"),
+                    "category": item.get("category") or extract_mod.guess_category(description, self.user_categories()),
                     "amount_cents": int(amount),
                     "currency": item.get("currency") or "ARS",
                     "kind": item.get("kind") or "purchase",

@@ -3,6 +3,7 @@
 import { useMemo, useState, type JSX } from "react";
 
 import { Icon } from "../../components/Icon";
+import { MonthSelect } from "../../components/DateField";
 import { EmptyState, ErrorBlock, LoadingBlock, Panel } from "../../components/ui";
 import { api } from "../../lib/backend";
 import { formatCents, formatDate, monthLabel } from "../../lib/format";
@@ -75,7 +76,15 @@ export function Spreadsheet(): JSX.Element {
     }
   };
 
-  const total = rows.reduce((acc, tx) => acc + tx.amount_cents, 0);
+  // Los importes no se convierten: el total se informa por moneda.
+  const totals = rows.reduce<Record<string, number>>((acc, tx) => {
+    const currency = (tx.currency ?? "ARS").toUpperCase();
+    acc[currency] = (acc[currency] ?? 0) + tx.amount_cents;
+    return acc;
+  }, {});
+  const totalsLabel = Object.entries(totals)
+    .map(([currency, cents]) => formatCents(cents, currency))
+    .join(" · ");
 
   return (
     <>
@@ -88,7 +97,7 @@ export function Spreadsheet(): JSX.Element {
         <div className="heading-actions">
           <div className="period-picker">
             <Icon name="calendar" />
-            <input type="month" value={period} aria-label="Período" onChange={(event) => setPeriod(event.target.value || period)} />
+            <MonthSelect value={period} onChange={(next) => setPeriod(next)} ariaLabel="Período" />
           </div>
           <button type="button" className="primary-button" onClick={exportWorkbook} disabled={exporting}>
             <Icon name="download" /> {exporting ? "Exportando…" : "Exportar XLSX"}
@@ -98,7 +107,7 @@ export function Spreadsheet(): JSX.Element {
 
       <Panel
         title="Movimientos"
-        subtitle={`${rows.length} filas · total ${formatCents(total)}`}
+        subtitle={`${rows.length} filas · total ${totalsLabel || formatCents(0)}`}
         action={
           <label className="search-field">
             <Icon name="search" />

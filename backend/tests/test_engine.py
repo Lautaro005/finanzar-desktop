@@ -250,3 +250,105 @@ def test_emergency_fund_percent(settings):
         assert fund["missingCents"] == to_cents("1500000")
     finally:
         ctx.db.close()
+
+
+def test_balance_separates_pesos_and_dolares(settings):
+    """Los saldos en dólares no se suman a los pesos: van por moneda."""
+    from finanzar_backend.api.deps import build_context
+
+    ctx = build_context(settings)
+    try:
+        ctx.repo.create_account(
+            new_id("acc"), {"name": "Banco", "currency": "ARS", "opening_balance_cents": to_cents("100000")}
+        )
+        usd_account = ctx.repo.create_account(
+            new_id("acc"), {"name": "Dólares", "currency": "USD", "opening_balance_cents": to_cents("50")}
+        )
+        ctx.repo.upsert_income_entry(
+            new_id("inc"),
+            {
+                "account_id": usd_account["id"],
+                "source": "Freelance USD",
+                "kind": "punctual",
+                "amount_cents": to_cents("25"),
+                "currency": "USD",
+                "occurred_on": "2026-10-02",
+            },
+        )
+        balances = ctx.engine.balances_by_currency()
+        assert balances["ARS"] == to_cents("100000")
+        assert balances["USD"] == to_cents("75")
+        # El consolidado es la moneda base (ARS): no mezcla dólares.
+        assert ctx.engine.consolidated_balance() == to_cents("100000")
+    finally:
+        ctx.db.close()
+
+
+def test_spending_summary_groups_by_category(settings):
+    from finanzar_backend.api.deps import build_context
+
+    ctx = build_context(settings)
+    try:
+        ctx.repo.insert_transactions(
+            [
+                {
+                    "id": new_id("tx"),
+                    "occurred_on": "2026-10-05",
+                    "description": "Super La Plaza",
+                    "category": "Alimentación",
+                    "amount_cents": to_cents("40000"),
+                    "currency": "ARS",
+                    "kind": "purchase",
+                    "confirmed": 1,
+                },
+                {
+                    "id": new_id("tx"),
+                    "occurred_on": "2026-10-06",
+                    "description": "Farmacity",
+                    "category": "Salud",
+                    "amount_cents": to_cents("10000"),
+                    "currency": "ARS",
+                    "kind": "purchase",
+                    "confirmed": 1,
+                },
+                {
+                    "id": new_id("tx"),
+                    "occurred_on": "2026-10-07",
+                    "description": "Apple",
+                    "category": "Suscripción",
+                    "amount_cents": 199,
+                    "currency": "USD",
+                    "kind": "subscription",
+                    "confirmed": 1,
+                },
+            ]
+        )
+        summary = ctx.engine.spending_summary("2026-10")
+        assert summary["count"] == 3
+        assert summary["byCurrency"]["ARS"] == to_cents("50000")
+        assert summary["byCurrency"]["USD"] == 199
+        assert summary["topCategories"][0]["category"] == "Alimentación"
+    finally:
+        ctx.db.close()
+
+
+def test_legacy_income_without_account_still_counts(settings):
+    """Un ingreso viejo sin cuenta (datos ya cargados) sigue sumando al balance."""
+    from finanzar_backend.api.deps import build_context
+
+    ctx = build_context(settings)
+    try:
+        ctx.repo.upsert_income_entry(
+            new_id("inc"),
+            {
+                "account_id": None,
+                "source": "Sueldo viejo",
+                "kind": "salary",
+                "amount_cents": to_cents("32000"),
+                "currency": "ARS",
+                "occurred_on": "2026-10-04",
+            },
+        )
+        assert ctx.engine.consolidated_balance() == to_cents("32000")
+    finally:
+        ctx.db.close()

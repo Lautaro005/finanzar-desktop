@@ -14,6 +14,7 @@ import type {
   CreditCard,
   Dashboard,
   DocumentPageImage,
+  EmbeddingsStatus,
   IncomeEntry,
   Insight,
   Installment,
@@ -181,6 +182,8 @@ export const api = {
   cancelModel: (modelId: string) => request<{ cancelled: boolean }>("POST", "/api/models/cancel", { modelId }),
   downloadRuntime: () => request<RuntimeStatus>("POST", "/api/models/runtime/download"),
   startLlm: () => request<Record<string, unknown>>("POST", "/api/llm/start"),
+  embeddings: () => request<EmbeddingsStatus>("GET", "/api/llm/embeddings"),
+  startEmbeddings: () => request<EmbeddingsStatus & { started: boolean; rebuilt?: boolean }>("POST", "/api/llm/embeddings/start"),
   jobs: (kind?: string) => request<{ jobs: Job[] }>("GET", `/api/jobs${kind ? `?kind=${kind}` : ""}`),
 
   updateStatus: () => request<UpdateStatus>("GET", "/api/app/update-status"),

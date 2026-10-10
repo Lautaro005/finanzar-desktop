@@ -103,6 +103,12 @@ const PATHS: Record<string, JSX.Element> = {
   "chevron-right": <path d="m9 18 6-6-6-6" />,
   "chevron-down": <path d="m6 9 6 6 6-6" />,
   "chevron-up": <path d="m18 15-6-6-6 6" />,
+  layers: (
+    <>
+      <path d="M12 3 3 8l9 5 9-5-9-5z" />
+      <path d="m3 13 9 5 9-5M3 17.5 12 22l9-4.5" />
+    </>
+  ),
   download: <path d="M12 3v12M7 11l5 5 5-5M4 21h16" />,
   search: (
     <>
@@ -151,6 +157,32 @@ const PATHS: Record<string, JSX.Element> = {
   save: <path d="M5 3h12l3 3v15H4V4a1 1 0 0 1 1-1zM8 3v6h8V3M8 21v-7h8v7" />,
   refresh: <path d="M21 12a9 9 0 1 1-3-6.7M21 4v5h-5" />,
   shield: <path d="M12 3l8 3v6c0 5-3.4 8.3-8 9-4.6-.7-8-4-8-9V6z" />,
+  settings: (
+    <>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+    </>
+  ),
+  user: (
+    <>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21c0-3.5 3.6-6 8-6s8 2.5 8 6" />
+    </>
+  ),
+  dollar: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v10M14.5 9.5A2.5 2.5 0 0 0 12 8h-.5a2 2 0 0 0 0 4h1a2 2 0 0 1 0 4H12a2.5 2.5 0 0 1-2.5-1.5" />
+    </>
+  ),
+  list: (
+    <>
+      <path d="M8 6h13M8 12h13M8 18h13" />
+      <circle cx="3.5" cy="6" r="1" fill="currentColor" stroke="none" />
+      <circle cx="3.5" cy="12" r="1" fill="currentColor" stroke="none" />
+      <circle cx="3.5" cy="18" r="1" fill="currentColor" stroke="none" />
+    </>
+  ),
   table: (
     <>
       <rect x="3" y="4" width="18" height="16" rx="2" />

@@ -95,8 +95,10 @@ class ModelDownloader:
         return base
 
     def status(self, spec: ModelSpec, quantization: str | None = None) -> ModelStatus:
-        quant = spec.default_quantization if spec.kind == "llm" else None
-        if spec.kind == "llm" and quantization:
+        # Cuantizaciones: los chats (spark) y los embeddings (embeddinggemma)
+        # eligen un archivo .gguf; los repos de OCR bajan el snapshot entero.
+        quant = spec.default_quantization if spec.quantizations else None
+        if spec.quantizations and quantization:
             quant = quantization
         directory = self._model_dir(spec, quant)
         status = ModelStatus(
@@ -140,7 +142,7 @@ class ModelDownloader:
             return {"model": custom.to_dict(), "alreadyInstalled": True}
 
         quant = None
-        if spec.kind == "llm":
+        if spec.quantizations:
             quant = spec.quantization(quantization)
         directory = self._model_dir(spec, quant.name if quant else None)
         directory.mkdir(parents=True, exist_ok=True)
@@ -322,14 +324,21 @@ class ModelDownloader:
             db.close()
 
     # -- runtime llama.cpp ------------------------------------------------
-    def _server_binary(self, runtime_id: str) -> Path | None:
+    def _server_binary(self, runtime_id: str, build: str | None = None) -> Path | None:
         """Ubica ``llama-server`` dentro del runtime instalado.
 
         Los archivos de llama.cpp varían: ``build/bin/llama-server`` en algunas
-        builds y ``llama-b<build>/llama-server`` en las de macOS.
+        builds y ``llama-b<build>/llama-server`` en las de macOS. Cuando se indica
+        ``build`` se exige esa build: si sólo está una vieja, se descarga la nueva.
         """
         base = self.settings.binary_dir / runtime_id
         if not base.exists():
+            return None
+        if build:
+            for folder in (f"llama-{build}", build):
+                candidate = base / folder / "llama-server"
+                if candidate.is_file():
+                    return candidate
             return None
         for candidate in sorted(base.rglob("llama-server")):
             if candidate.is_file():
@@ -338,7 +347,7 @@ class ModelDownloader:
 
     def runtime_status(self, target: str) -> dict[str, Any]:
         runtime = self.manifest.runtime["llamaCpp"]
-        binary = self._server_binary(runtime.id)
+        binary = self._server_binary(runtime.id, runtime.build)
         asset = runtime.assets.get(target)
         return {
             "id": runtime.id,
@@ -358,7 +367,7 @@ class ModelDownloader:
         asset = runtime.assets.get(target)
         if asset is None:
             raise RuntimeError(f"No hay runtime de llama.cpp para el target {target}")
-        if self._server_binary(runtime.id) is not None:
+        if self._server_binary(runtime.id, runtime.build) is not None:
             return self.runtime_status(target)
         base = self.settings.binary_dir / runtime.id
         archive = base / asset.name
@@ -370,7 +379,7 @@ class ModelDownloader:
         await self._stream_download(url, archive, total=asset.bytes, job=job, state=state)
         with tarfile.open(archive, "r:gz") as tar:
             _safe_extract(tar, base)
-        binary = self._server_binary(runtime.id)
+        binary = self._server_binary(runtime.id, runtime.build)
         if binary is not None:
             binary.chmod(binary.stat().st_mode | 0o111)
         await self.bus.update_job(job, status="done", progress=1.0, message="llama.cpp listo")

@@ -19,6 +19,7 @@ interface ChatMessage {
 
 const SUGGESTIONS = [
   "¿Cuánto tengo que pagar?",
+  "¿Cuáles fueron mis consumos?",
   "¿Qué cuotas siguen?",
   "¿Hay gastos repetidos?",
   "¿Cuándo cobro el sueldo?",
