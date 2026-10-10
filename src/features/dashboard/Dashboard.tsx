@@ -9,6 +9,20 @@ import { formatCents, formatCompact, formatDate, formatDayMonth, monthLabel } fr
 import { useAsync } from "../../lib/hooks";
 import { useApp } from "../../app/context";
 
+const INSIGHT_CLASS: Record<string, string> = {
+  good: "insight-green",
+  review: "insight-yellow",
+  alert: "insight-red",
+  info: "insight-blue",
+};
+
+const INSIGHT_ICON: Record<string, string> = {
+  good: "trend",
+  review: "eye",
+  alert: "alert",
+  info: "spark",
+};
+
 export function Dashboard(): JSX.Element {
   const { period, setPeriod, refreshKey, refresh, setRoute, openMoney, setChatOpen, toast } = useApp();
   const dashboard = useAsync(() => api.dashboard(period), [period, refreshKey]);
@@ -394,9 +408,9 @@ export function Dashboard(): JSX.Element {
         ) : (
           <div className="insights-grid">
             {data.insights.map((insight) => (
-              <article className={`insight-card insight-${insight.severity}`} key={insight.id}>
+              <article className={`insight-card ${INSIGHT_CLASS[insight.severity] ?? "insight-blue"}`} key={insight.id}>
                 <div className="insight-marker">
-                  <Icon name={insight.severity === "good" ? "trend" : insight.severity === "alert" ? "alert" : "eye"} />
+                  <Icon name={INSIGHT_ICON[insight.severity] ?? "info"} />
                 </div>
                 <div>
                   <span className="insight-type">

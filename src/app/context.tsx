@@ -13,8 +13,7 @@ export type Route =
   | "calendar"
   | "movements"
   | "spreadsheet"
-  | "settings"
-  | "updates";
+  | "settings";
 
 export interface MoneyModalIntent {
   mode: "income" | "salary";

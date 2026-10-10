@@ -83,13 +83,12 @@ export function Updates(): JSX.Element {
 
   return (
     <>
-      <div className="page-heading">
+      <div className="section-heading">
         <div>
-          <p className="eyebrow">Actualizaciones · canal estable</p>
-          <h1>Actualizaciones.</h1>
-          <p className="heading-copy">La app comprueba versiones cada 3 horas y nunca instala sin tu permiso.</p>
+          <h2>Actualizaciones</h2>
+          <p>La app comprueba versiones cada 3 horas y nunca instala sin tu permiso.</p>
         </div>
-        <button type="button" className="primary-button" onClick={checkNow} disabled={checking}>
+        <button type="button" className="secondary-button" onClick={checkNow} disabled={checking}>
           <Icon name="refresh" /> {checking ? "Comprobando…" : "Comprobar ahora"}
         </button>
       </div>

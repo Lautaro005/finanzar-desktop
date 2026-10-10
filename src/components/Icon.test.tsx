@@ -33,4 +33,23 @@ describe("Icon", () => {
     expect(container.querySelectorAll("svg")).toHaveLength(6);
     expect(screen.queryByText("algo")).toBeNull();
   });
+
+  it("expone data-icon para que el CSS del prototipo lo dimensione y coloree", () => {
+    const { container } = render(<Icon name="wallet" />);
+    expect(container.querySelector("svg")?.getAttribute("data-icon")).toBe("wallet");
+  });
+
+  it("usa stroke currentColor y fill none (evita íconos negros)", () => {
+    const { container } = render(<Icon name="check" />);
+    const svg = container.querySelector("svg");
+    expect(svg?.getAttribute("stroke")).toBe("currentColor");
+    expect(svg?.getAttribute("fill")).toBe("none");
+  });
+
+  it("respeta un tamaño explícito cuando se pasa size", () => {
+    const { container } = render(<Icon name="info" size={22} />);
+    const svg = container.querySelector("svg") as SVGSVGElement;
+    expect(svg.style.width).toBe("22px");
+    expect(svg.style.height).toBe("22px");
+  });
 });

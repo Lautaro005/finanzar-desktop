@@ -3,6 +3,7 @@
 import { useMemo, useState, type JSX } from "react";
 
 import { Icon } from "../../components/Icon";
+import { Select } from "../../components/Select";
 import { EmptyState, ErrorBlock, LoadingBlock, Panel } from "../../components/ui";
 import { api } from "../../lib/backend";
 import { formatCents, formatDate } from "../../lib/format";
@@ -39,6 +40,14 @@ export function Transactions(): JSX.Element {
       (tx) => tx.description.toLowerCase().includes(needle) || (tx.category ?? "").toLowerCase().includes(needle),
     );
   }, [transactions.data, query]);
+
+  const cardOptions = useMemo(
+    () => [
+      { value: "", label: "Todas las tarjetas" },
+      ...(cards.data?.cards ?? []).map((card) => ({ value: card.id, label: card.name })),
+    ],
+    [cards.data],
+  );
 
   const saveCategory = async (id: string) => {
     try {
@@ -89,14 +98,7 @@ export function Transactions(): JSX.Element {
             ))}
           </div>
           <div className="filter-actions">
-            <select value={cardId} onChange={(event) => setCardId(event.target.value)} aria-label="Filtrar por tarjeta">
-              <option value="">Todas las tarjetas</option>
-              {(cards.data?.cards ?? []).map((card) => (
-                <option key={card.id} value={card.id}>
-                  {card.name}
-                </option>
-              ))}
-            </select>
+            <Select value={cardId} options={cardOptions} onChange={setCardId} ariaLabel="Filtrar por tarjeta" />
             <label className="search-field">
               <Icon name="search" />
               <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar…" aria-label="Buscar movimientos" />

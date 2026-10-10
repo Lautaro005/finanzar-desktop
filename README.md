@@ -17,8 +17,8 @@ movimientos o preguntas sale de la máquina.
 ## Arranque en un comando
 
 ```bash
-git clone https://github.com/finanzar/finanzar-local.git
-cd finanzar-local
+git clone https://github.com/Lautaro005/finanzar-desktop.git
+cd finanzar-desktop
 ./scripts/dev.sh
 ```
 
@@ -32,7 +32,7 @@ La app instalada **no requiere Python**.
 ## Estructura
 
 ```text
-finanzar-local/
+finanzar-desktop/
 ├── src/                 # React + TypeScript (interfaz)
 ├── src-tauri/           # Shell Tauri 2 en Rust + sidecar del backend
 ├── backend/             # FastAPI + SQLite + ChromaDB + OCR + copiloto

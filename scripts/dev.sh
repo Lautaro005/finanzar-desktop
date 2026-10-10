@@ -92,10 +92,24 @@ log "Iniciando backend local en 127.0.0.1:$PORT"
 BACKEND_PID=$!
 
 cleanup() {
-  log "Cerrando backend (pid $BACKEND_PID)"
+  log "Cerrando backend local"
+  # Señalizar el proceso Python (no el wrapper de uv) para que su lifespan
+  # detenga también llama-server.
+  pkill -f "finanzar_backend --host 127.0.0.1 --port $PORT" 2>/dev/null || true
   kill "$BACKEND_PID" 2>/dev/null || true
+  for _ in $(seq 1 6); do
+    pgrep -f "finanzar_backend --host 127.0.0.1 --port $PORT" >/dev/null 2>&1 || break
+    sleep 0.5
+  done
+  pkill -9 -f "finanzar_backend --host 127.0.0.1 --port $PORT" 2>/dev/null || true
+  # Si quedó un llama-server del proyecto, se apaga por su directorio de datos.
+  for pid in $(pgrep -f "llama-server" 2>/dev/null || true); do
+    if ps -o command= -p "$pid" 2>/dev/null | grep -q "Application Support/FinanzAR"; then
+      kill "$pid" 2>/dev/null || true
+    fi
+  done
 }
-trap cleanup EXIT
+trap cleanup EXIT INT TERM
 
 for _ in $(seq 1 60); do
   if curl -sf "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then

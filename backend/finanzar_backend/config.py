@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     llm_threads: int = 0  # 0 = automático
 
     # Updater
-    update_repo: str = "finanzar/finanzar-local"
+    update_repo: str = "Lautaro005/finanzar-desktop"
     update_check_interval_seconds: int = 3 * 60 * 60
 
     @property

@@ -56,7 +56,7 @@
     "updater": {
       "active": true,
       "endpoints": [
-        "https://github.com/finanzar/finanzar-local/releases/latest/download/latest.json"
+        "https://github.com/Lautaro005/finanzar-desktop/releases/latest/download/latest.json"
       ],
       "dialog": false,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDIyNjA0Mjk4REJDNzZDRDMKUldUVGJNZmJtRUpnSWh0OXE0NUozbGhmUFN1MWNkRmZLK1lGZGIxMVYxYzNtd0JqempldGd0WG0K"

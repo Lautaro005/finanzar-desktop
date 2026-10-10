@@ -5,7 +5,20 @@
   --ink: #0b3d2e;
 }
 
-/* --- Arranque --- */
+/* --- Íconos --- */
+/* El svg lleva data-icon y atributos de trazo. El tamaño base (17px) y los
+   tamaños contextuales los define el CSS del prototipo con reglas `[data-icon]`;
+   acá solo se agrega un tope para que el ícono nunca desborde su contenedor. */
+svg[data-icon] {
+  max-width: 100%;
+  max-height: 100%;
+  flex: 0 0 auto;
+}
+/* Formas rellenas (puntos) mantienen su color de trazo desactivado. */
+svg[data-icon] [fill="currentColor"] {
+  fill: currentColor;
+  stroke: none;
+}
 .bootstrap-overlay {
   position: fixed;
   inset: 0;
@@ -102,6 +115,15 @@
   border-color: #cdeedd;
   color: var(--ink);
   flex-wrap: wrap;
+}
+
+/* En la franja de alerta, título y detalle van en líneas separadas. */
+.alert-strip strong,
+.alert-strip span {
+  display: block;
+}
+.alert-strip span {
+  margin-top: 3px;
 }
 
 .chip {
@@ -431,10 +453,7 @@
 }
 
 .suggested-prompts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 0 18px 8px;
+  margin-bottom: 14px;
 }
 
 /* --- Configuración / actualizaciones --- */
@@ -467,6 +486,335 @@
 .stat-icon.soft-green {
   background: #e7f8ef;
   color: #14613f;
+}
+
+/* --- Integración con el CSS del prototipo --- */
+/* La topbar alinea el título a la izquierda y las acciones a la derecha. */
+.topbar-title {
+  margin-right: auto;
+}
+
+/* Toasts: el prototipo los fija abajo-centro; la pila los apila abajo-derecha. */
+.toast-stack .toast {
+  position: static;
+  left: auto;
+  bottom: auto;
+  transform: none;
+  opacity: 1;
+  pointer-events: auto;
+  max-width: 360px;
+}
+
+/* Cuentas: variantes de ícono según el tipo real de cuenta. */
+.account-icon.wallet {
+  color: var(--mint-ink);
+  background: #e9f9ed;
+}
+.account-icon.cash {
+  color: #87671a;
+  background: var(--yellow-soft);
+}
+.account-icon.savings {
+  color: var(--mint-ink);
+  background: #e5f8e9;
+}
+.account-icon.card {
+  color: var(--blue-ink);
+  background: #eff6ff;
+}
+
+.document-status.error {
+  color: var(--red-ink);
+}
+
+.insight-red .insight-marker {
+  background: #ffe9e5;
+  color: var(--red-ink);
+}
+
+/* Eventos de calendario que el prototipo no contemplaba. */
+.calendar-event.subscription {
+  color: #806122;
+  background: #fff7df;
+}
+.calendar-event.goal {
+  color: var(--mint-ink);
+  background: #e9f8ec;
+}
+.dot.subscription {
+  background: #e4be45;
+}
+.dot.goal {
+  background: var(--mint-strong);
+}
+.agenda-item.subscription > div:last-child {
+  border-color: #e9ce79;
+}
+.agenda-item.income > div:last-child {
+  border-color: var(--mint-strong);
+}
+.agenda-item.goal > div:last-child {
+  border-color: var(--mint);
+}
+
+/* Resúmenes numéricos: se adaptan a la cantidad de tarjetas. */
+.movement-summary {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+/* Estados dentro de un panel: columna centrada, no una fila apretada.
+   En paneles angostos la fila dejaba el texto en tiras y el botón pegado. */
+.state-block {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 24px 20px;
+}
+.state-block .state-icon {
+  width: 24px;
+  height: 24px;
+}
+.state-block strong {
+  font-size: 13px;
+}
+.state-block p {
+  font-size: 12px;
+  max-width: 46ch;
+  margin-top: 4px;
+}
+.state-block button {
+  margin-top: 4px;
+}
+
+/* Revisión: la evidencia ocupa su propia línea. */
+.field-row {
+  flex-wrap: wrap;
+}
+.field-row .field-evidence {
+  flex: 1 1 100%;
+}
+
+/* Formularios en fila: que respiren y no se estiren de más. */
+.stack-form.inline > label {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+.stack-form > button,
+.stack-form.inline > button {
+  align-self: flex-start;
+}
+
+/* Tablas y planillas: la primera columna no se comprime. */
+.movement-table .movement-name,
+.movement-table.spreadsheet td:first-child {
+  min-width: 150px;
+}
+
+/* Configuración: separador antes de la sección de actualizaciones. */
+.settings-divider {
+  margin: 30px 0 24px;
+  border-top: 1px solid var(--line);
+}
+
+/* --- Dropdown propio --- */
+.app-select {
+  position: relative;
+  min-width: 0;
+}
+.app-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  transition: .2s;
+}
+.app-select-trigger:hover {
+  border-color: #c4d5c8;
+}
+.app-select.open .app-select-trigger {
+  border-color: var(--mint-strong);
+  box-shadow: 0 0 0 3px rgba(53, 185, 108, .14);
+}
+.app-select-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-select-caret {
+  display: inline-flex;
+  color: var(--muted);
+}
+.app-select-caret svg {
+  width: 15px;
+  height: 15px;
+}
+.app-select-list {
+  position: absolute;
+  z-index: 25;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-float);
+  max-height: 260px;
+  overflow-y: auto;
+}
+.app-select-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.app-select-option.active {
+  background: var(--surface-2);
+}
+.app-select-option.selected {
+  color: var(--mint-ink);
+  font-weight: 700;
+}
+.app-select-option svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* El dropdown hereda el tamaño del contexto donde reemplaza al select nativo. */
+.money-form-grid .app-select-trigger {
+  padding: 10px;
+  font-size: 11px;
+  border-radius: 9px;
+  background: #fbfdfb;
+}
+.filter-actions .app-select {
+  min-width: 168px;
+}
+.filter-actions .app-select-trigger {
+  padding: 8px 9px;
+  font-size: 10px;
+  color: var(--muted);
+  border-radius: 8px;
+}
+
+/* --- Ritmo vertical y encabezados --- */
+/* Bloques separados de forma uniforme: ningún container pegado a otro. */
+.page-wrap {
+  display: flex;
+  flex-direction: column;
+  row-gap: 22px;
+}
+.page-wrap > * {
+  margin-bottom: 0;
+}
+/* Bloques que traían margen propio: se alinean al ritmo uniforme. */
+.insights-section,
+.document-strip,
+.alert-strip {
+  margin-top: 0;
+}
+
+/* El título y su subtítulo van en una fila; las acciones, en la fila de abajo. */
+.page-heading {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 16px;
+}
+.page-heading > div:first-child {
+  min-width: 0;
+}
+.heading-actions {
+  align-items: center;
+}
+
+/* Métricas: el texto no se sale de la tarjeta. */
+.stat-value {
+  white-space: normal;
+  font-size: clamp(19px, 1.6vw, 23px);
+}
+.stat-foot {
+  flex-wrap: wrap;
+  white-space: normal;
+}
+
+/* Formularios en fila: el botón se alinea con el campo, no con la etiqueta. */
+.stack-form.inline {
+  align-items: flex-end;
+}
+.stack-form.inline > button {
+  align-self: auto;
+}
+
+/* Los paneles quedan lado a lado; sólo se apilan en ventanas realmente angostas. */
+@media (max-width: 900px) {
+  .two-column,
+  .settings-grid,
+  .document-layout {
+    grid-template-columns: 1fr;
+  }
+  .document-list-panel {
+    order: 2;
+  }
+}
+
+/* Encabezados de panel: si el título y la acción no entran, la acción baja. */
+.panel-heading,
+.section-heading {
+  flex-wrap: wrap;
+  row-gap: 10px;
+}
+
+/* La franja de cierre se reacomoda antes de que sus botones se salgan. */
+@media (max-width: 980px) {
+  .closing-strip {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .closing-copy {
+    min-width: 0;
+  }
+  .closing-progress {
+    width: 100%;
+    order: 3;
+  }
+  .closing-progress > span {
+    text-align: left;
+  }
+  .closing-strip .text-button {
+    margin-left: auto;
+  }
+}
+
+/* El contenido de un panel no queda pegado a su título/subtítulo. */
+.panel-heading + .movement-table-wrap,
+.panel-heading + .sheet-grid,
+.panel-heading + .stack-list,
+.panel-heading + .stack-form,
+.panel-heading + .movement-toolbar,
+.panel-heading + .document-detail-inner,
+.panel-heading + .state-block {
+  margin-top: 16px;
+}
+
+/* Separador de configuración: sólo el aire superior, el ritmo lo da el gap. */
+.settings-divider {
+  margin: 8px 0 0;
 }
 
 @media (prefers-reduced-motion: reduce) {

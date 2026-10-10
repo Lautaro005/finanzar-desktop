@@ -1,6 +1,6 @@
 /** Shell de la aplicación: sidebar, topbar, ruteo y overlays. */
 
-import { useEffect, type JSX } from "react";
+import { useEffect, useState, type JSX } from "react";
 
 import { BrandLockup, BrandMark } from "../components/Brand";
 import { Icon } from "../components/Icon";
@@ -18,7 +18,6 @@ import { MoneyModal } from "../features/income/MoneyModal";
 import { Settings } from "../features/settings/Settings";
 import { Spreadsheet } from "../features/spreadsheet/Spreadsheet";
 import { Transactions } from "../features/transactions/Transactions";
-import { Updates } from "../features/updates/Updates";
 import { AppProvider, useApp, type Route } from "./context";
 
 const NAV: Array<{ route: Route; label: string; icon: string }> = [
@@ -30,7 +29,6 @@ const NAV: Array<{ route: Route; label: string; icon: string }> = [
   { route: "movements", label: "Movimientos", icon: "receipt" },
   { route: "spreadsheet", label: "Datos", icon: "table" },
   { route: "settings", label: "Configuración", icon: "sliders" },
-  { route: "updates", label: "Actualizaciones", icon: "download" },
 ];
 
 const TITLES: Record<Route, string> = {
@@ -42,7 +40,6 @@ const TITLES: Record<Route, string> = {
   movements: "Movimientos",
   spreadsheet: "Datos",
   settings: "Configuración",
-  updates: "Actualizaciones",
 };
 
 function BackendGate(): JSX.Element | null {
@@ -99,6 +96,12 @@ function BackendGate(): JSX.Element | null {
 
 function Shell(): JSX.Element {
   const { route, setRoute, chatOpen, setChatOpen, moneyIntent, closeMoney, toasts, dismissToast } = useApp();
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const go = (next: Route) => {
+    setRoute(next);
+    setMenuOpen(false);
+  };
 
   const renderRoute = (): JSX.Element => {
     switch (route) {
@@ -116,8 +119,6 @@ function Shell(): JSX.Element {
         return <Spreadsheet />;
       case "settings":
         return <Settings />;
-      case "updates":
-        return <Updates />;
       case "dashboard":
       default:
         return <Dashboard />;
@@ -126,7 +127,7 @@ function Shell(): JSX.Element {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar" aria-label="Navegación principal">
+      <aside className={`sidebar ${menuOpen ? "mobile-open" : ""}`} aria-label="Navegación principal">
         <BrandLockup />
         <div className="demo-banner">
           <span className="status-dot" />
@@ -141,7 +142,7 @@ function Shell(): JSX.Element {
               key={item.route}
               type="button"
               className={`nav-item ${route === item.route ? "active" : ""}`}
-              onClick={() => setRoute(item.route)}
+              onClick={() => go(item.route)}
               aria-current={route === item.route ? "page" : undefined}
             >
               <span className="nav-icon">
@@ -175,6 +176,15 @@ function Shell(): JSX.Element {
             <BrandMark />
             <strong>FinanzAR</strong>
           </div>
+          <button
+            type="button"
+            className="mobile-menu"
+            aria-label={menuOpen ? "Cerrar menú" : "Abrir menú"}
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            <Icon name={menuOpen ? "close" : "menu"} />
+          </button>
           <span className="topbar-title">{TITLES[route]}</span>
           <div className="topbar-actions">
             <div className="privacy-pill">

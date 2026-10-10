@@ -8,6 +8,7 @@ import { api } from "../../lib/backend";
 import { formatCents } from "../../lib/format";
 import { useAsync } from "../../lib/hooks";
 import { invoke, isTauri } from "../../lib/tauri";
+import { Updates } from "../updates/Updates";
 import { useApp } from "../../app/context";
 import type { RuntimeStatus } from "../../types/api";
 
@@ -287,6 +288,9 @@ export function Settings(): JSX.Element {
           {!isTauri() && <p className="settings-note">Estás viendo la app en el navegador; algunas acciones requieren la ventana de escritorio.</p>}
         </Panel>
       </div>
+
+      <div className="settings-divider" />
+      <Updates />
     </>
   );
 }

@@ -101,6 +101,8 @@ const PATHS: Record<string, JSX.Element> = {
   ),
   "chevron-left": <path d="m15 18-6-6 6-6" />,
   "chevron-right": <path d="m9 18 6-6-6-6" />,
+  "chevron-down": <path d="m6 9 6 6 6-6" />,
+  "chevron-up": <path d="m18 15-6-6-6 6" />,
   download: <path d="M12 3v12M7 11l5 5 5-5M4 21h16" />,
   search: (
     <>
@@ -143,13 +145,34 @@ const PATHS: Record<string, JSX.Element> = {
 export interface IconProps {
   name: string;
   className?: string;
+  size?: number;
 }
 
-export function Icon({ name, className }: IconProps): JSX.Element | null {
+/**
+ * Ícono del sistema.
+ *
+ * El `svg` lleva `data-icon` y los atributos de trazo (`stroke="currentColor"`,
+ * `fill="none"`) para que tome el color del contenedor y el tamaño que definen
+ * las reglas de `[data-icon]`. Sin esto, un `svg` sin `width`/`height` se
+ * estira al 100% del contenedor y se pinta negro por defecto.
+ */
+export function Icon({ name, className, size }: IconProps): JSX.Element | null {
   const content = PATHS[name];
   if (!content) return null;
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className={className} focusable="false">
+    <svg
+      data-icon={name}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+      className={className}
+      style={size ? { width: size, height: size } : undefined}
+    >
       {content}
     </svg>
   );

@@ -19,6 +19,16 @@ const KIND_LABEL: Record<string, string> = {
   goal: "Meta de ahorro",
 };
 
+/** El CSS del prototipo nombra las clases de evento por tipo visual. */
+const KIND_CLASS: Record<string, string> = {
+  due: "payment",
+  close: "close",
+  installment: "installment",
+  subscription: "subscription",
+  income: "income",
+  goal: "goal",
+};
+
 function buildGrid(year: number, month: number): Array<{ date: Date; inMonth: boolean }> {
   const first = new Date(year, month, 1);
   const offset = (first.getDay() + 6) % 7;
@@ -110,7 +120,11 @@ export function CalendarScreen(): JSX.Element {
                 <div key={key} className={`calendar-day ${inMonth ? "" : "muted-day"} ${isToday ? "today" : ""}`}>
                   <span className="day-number">{date.getDate()}</span>
                   {events.slice(0, 3).map((event) => (
-                    <span key={event.id} className={`calendar-event ${event.kind}`} title={`${KIND_LABEL[event.kind] ?? event.kind}: ${event.title}`}>
+                    <span
+                      key={event.id}
+                      className={`calendar-event ${KIND_CLASS[event.kind] ?? "payment"}`}
+                      title={`${KIND_LABEL[event.kind] ?? event.kind}: ${event.title}`}
+                    >
                       {event.title}
                     </span>
                   ))}
@@ -130,7 +144,7 @@ export function CalendarScreen(): JSX.Element {
           ) : (
             <div className="agenda-list">
               {agenda.map((event) => (
-                <div key={event.id} className={`agenda-item ${event.kind}`}>
+                <div key={event.id} className={`agenda-item ${KIND_CLASS[event.kind] ?? "payment"}`}>
                   <div className="agenda-date">
                     <strong>{event.event_date.slice(-2)}</strong>
                     <span>{MONTH_NAMES[Number(event.event_date.slice(5, 7)) - 1]?.slice(0, 3).toUpperCase()}</span>

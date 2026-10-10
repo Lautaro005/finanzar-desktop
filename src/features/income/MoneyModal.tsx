@@ -3,6 +3,7 @@
 import { useMemo, useState, type JSX } from "react";
 
 import { Icon } from "../../components/Icon";
+import { Select } from "../../components/Select";
 import { Modal } from "../../components/ui";
 import { api } from "../../lib/backend";
 import { currentPeriod, formatCents } from "../../lib/format";
@@ -80,11 +81,16 @@ export function MoneyModal({ mode, onClose }: { mode: "income" | "salary"; onClo
       <form id="money-form" className="money-form-grid" onSubmit={submit}>
         <label>
           <span>Qué querés registrar</span>
-          <select value={kind} onChange={(event) => setKind(event.target.value as typeof kind)}>
-            <option value="income">Ingreso puntual</option>
-            <option value="salary">Sueldo recurrente</option>
-            <option value="transfer">Dinero inicial / transferencia</option>
-          </select>
+          <Select
+            value={kind}
+            options={[
+              { value: "income", label: "Ingreso puntual" },
+              { value: "salary", label: "Sueldo recurrente" },
+              { value: "transfer", label: "Dinero inicial / transferencia" },
+            ]}
+            onChange={(next) => setKind(next as typeof kind)}
+            ariaLabel="Qué querés registrar"
+          />
         </label>
         <label>
           <span>Importe</span>

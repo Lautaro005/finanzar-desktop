@@ -3,6 +3,7 @@
 import { useState, type JSX } from "react";
 
 import { Icon } from "../../components/Icon";
+import { Select } from "../../components/Select";
 import { EmptyState, ErrorBlock, LoadingBlock, Panel, StatusPill } from "../../components/ui";
 import { api } from "../../lib/backend";
 import { formatCents } from "../../lib/format";
@@ -81,13 +82,7 @@ export function Accounts(): JSX.Element {
             </label>
             <label>
               <span>Tipo</span>
-              <select value={kind} onChange={(event) => setKind(event.target.value)}>
-                {KINDS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+              <Select value={kind} options={KINDS} onChange={setKind} ariaLabel="Tipo de cuenta" />
             </label>
             <label>
               <span>Saldo inicial</span>

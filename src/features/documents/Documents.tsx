@@ -1,6 +1,6 @@
 /** Documentos: importar PDF, ejecutar OCR, revisar y confirmar. */
 
-import { useCallback, useMemo, useState, type JSX } from "react";
+import { Fragment, useCallback, useMemo, useState, type JSX } from "react";
 
 import { Icon } from "../../components/Icon";
 import { EmptyState, ErrorBlock, LoadingBlock, Modal, Panel, StatusPill } from "../../components/ui";
@@ -248,13 +248,13 @@ function DocumentDetail({
 
       <div className="detail-stages">
         {stages.map((stage, index) => (
-          <span key={stage} className="stage-wrapper">
+          <Fragment key={stage}>
             <span className={`stage ${index < currentIndex ? "done" : index === currentIndex ? "active" : ""}`}>
               <span className="stage-dot">{index <= currentIndex ? <Icon name="check" /> : index + 1}</span>
               {stage === "imported" ? "Importado" : stage === "ocr" ? "OCR" : stage === "extracted" ? "Extracción" : stage === "review" ? "Revisión" : "Confirmado"}
             </span>
             {index < stages.length - 1 && <i className={`stage-line ${index < currentIndex ? "done" : ""}`} />}
-          </span>
+          </Fragment>
         ))}
       </div>
 
