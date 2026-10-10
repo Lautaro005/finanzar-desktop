@@ -158,6 +158,58 @@ def test_document_import_ocr_review_confirm_and_export(client, tmp_path: Path) -
     assert preview["sheets"] == exported["sheets"]
 
 
+def test_document_and_transaction_delete(client, tmp_path: Path) -> None:
+    pdf = make_statement_pdf(tmp_path / "resumen.pdf")
+    content = pdf.read_bytes()
+    imported = _data(
+        client.post("/api/documents/import", files={"file": ("resumen.pdf", content, "application/pdf")})
+    )
+    statement_id = imported["document"]["id"]
+    _data(client.post(f"/api/documents/{statement_id}/ocr", params={"prefer": "native"}))
+    review = _data(client.get(f"/api/documents/{statement_id}/review"))
+    assert review["transactions"]
+
+    # Borrar un movimiento del resumen; el segundo intento ya no lo encuentra.
+    tx_id = review["transactions"][0]["id"]
+    assert _data(client.delete(f"/api/transactions/{tx_id}"))["deleted"] is True
+    assert client.delete(f"/api/transactions/{tx_id}").status_code == 404
+
+    # Borrar el documento entero: se va con sus movimientos y su PDF.
+    stored_path = Path(imported["document"]["stored_path"])
+    assert stored_path.exists()
+    deleted = _data(client.delete(f"/api/documents/{statement_id}"))
+    assert deleted["deleted"] is True
+    assert not stored_path.exists()
+    assert _data(client.get("/api/documents"))["documents"] == []
+    assert client.get(f"/api/documents/{statement_id}/review").status_code == 404
+
+
+def test_marking_regions_does_not_duplicate_or_add_rubbish(client, tmp_path: Path) -> None:
+    pdf = make_statement_pdf(tmp_path / "resumen.pdf")
+    imported = _data(
+        client.post(
+            "/api/documents/import",
+            files={"file": ("resumen.pdf", pdf.read_bytes(), "application/pdf")},
+        )
+    )
+    statement_id = imported["document"]["id"]
+    before = _data(client.post(f"/api/documents/{statement_id}/ocr", params={"prefer": "native"}))
+    total_before = len(_data(client.get(f"/api/documents/{statement_id}/review"))["transactions"])
+
+    # Marcar toda la tabla de consumos: no debe duplicar ni agregar el pie legal.
+    marked = _data(
+        client.post(
+            f"/api/documents/{statement_id}/extract-regions",
+            json={"page": 1, "regions": [[60, 60, 540, 260]]},
+        )
+    )
+    assert marked["engine"] == "layout"
+    assert marked["added"] == 0
+    assert marked["skipped"] > 0
+    assert len(_data(client.get(f"/api/documents/{statement_id}/review"))["transactions"]) == total_before
+    assert before["transactions"] >= 2
+
+
 def test_transactions_and_calendar(client) -> None:
     _data(
         client.post(

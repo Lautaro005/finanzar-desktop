@@ -4,6 +4,8 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type JSX }
 
 import { Icon } from "../../components/Icon";
 import { DateInput } from "../../components/DateField";
+import { RowMenu } from "../../components/RowMenu";
+import { Select } from "../../components/Select";
 import { EmptyState, ErrorBlock, LoadingBlock, Modal, Panel, StatusPill } from "../../components/ui";
 import { api } from "../../lib/backend";
 import { ddmmToIso, formatCents, formatDate, isoToDdmm } from "../../lib/format";
@@ -11,6 +13,20 @@ import { useAsync } from "../../lib/hooks";
 import { pickPdf } from "../../lib/tauri";
 import { useApp } from "../../app/context";
 import type { DocumentPageImage, Statement, StatementField, Transaction } from "../../types/api";
+
+/** Campos con opciones fijas: el emisor y la moneda se eligen, no se tipean. */
+const FIELD_CHOICES: Record<string, Array<{ value: string; label: string }>> = {
+  brand: [
+    { value: "amex", label: "American Express" },
+    { value: "master", label: "Mastercard" },
+    { value: "visa", label: "Visa" },
+    { value: "other", label: "Otra" },
+  ],
+  currency: [
+    { value: "ARS", label: "Pesos (AR$)" },
+    { value: "USD", label: "Dólares (US$)" },
+  ],
+};
 
 const FIELD_LABELS: Record<string, string> = {
   total: "Total a pagar",
@@ -36,6 +52,7 @@ export function Documents(): JSX.Element {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [deletingDoc, setDeletingDoc] = useState<Statement | null>(null);
 
   const list = documents.data?.documents ?? [];
   const selected = useMemo(
@@ -71,6 +88,19 @@ export function Documents(): JSX.Element {
       setBusy(null);
     }
   }, [refresh, toast]);
+
+  const removeDocument = async (doc: Statement) => {
+    try {
+      await api.deleteDocument(doc.id);
+      toast(`Se borró ${doc.filename}.`);
+      setDeletingDoc(null);
+      setSelectedId(null);
+      setReviewOpen(false);
+      refresh();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "No se pudo borrar el documento", "error");
+    }
+  };
 
   const runOcr = async (id: string) => {
     setBusy(`ocr:${id}`);
@@ -132,11 +162,18 @@ export function Documents(): JSX.Element {
           ) : (
             <div className="document-list">
               {list.map((doc) => (
-                <button
+                <div
                   key={doc.id}
-                  type="button"
                   className={`document-item ${selected?.id === doc.id ? "active" : ""}`}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setSelectedId(doc.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setSelectedId(doc.id);
+                    }
+                  }}
                 >
                   <span className="doc-type">PDF</span>
                   <span className="doc-copy">
@@ -146,7 +183,13 @@ export function Documents(): JSX.Element {
                     </small>
                   </span>
                   <StatusPill status={doc.status} />
-                </button>
+                  <RowMenu
+                    label={`Acciones para ${doc.filename}`}
+                    actions={[
+                      { label: "Borrar documento", icon: "trash", danger: true, onSelect: () => setDeletingDoc(doc) },
+                    ]}
+                  />
+                </div>
               ))}
             </div>
           )}
@@ -167,6 +210,34 @@ export function Documents(): JSX.Element {
           )}
         </Panel>
       </div>
+
+      {deletingDoc && (
+        <Modal
+          title="Borrar documento"
+          eyebrow="Documento local"
+          size="compact"
+          onClose={() => setDeletingDoc(null)}
+          footer={
+            <>
+              <button type="button" className="secondary-button" onClick={() => setDeletingDoc(null)}>
+                Cancelar
+              </button>
+              <button type="button" className="danger-button" onClick={() => void removeDocument(deletingDoc)}>
+                <Icon name="trash" /> Borrar
+              </button>
+            </>
+          }
+        >
+          <div className="confirm-body">
+            <p className="confirm-copy">
+              ¿Borrar <strong>{deletingDoc.filename}</strong> con sus movimientos y su PDF?
+            </p>
+            <p className="confirm-note">
+              El resumen, sus movimientos, su pago del período y los fragmentos de memoria se eliminan del equipo.
+            </p>
+          </div>
+        </Modal>
+      )}
 
       {reviewOpen && selected && (
         <ReviewModal
@@ -294,6 +365,8 @@ function ReviewModal({
     Object.fromEntries(fields.map((field) => [field.field_key, field.field_value ?? ""])),
   );
   const [rows, setRows] = useState(transactions);
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+  const [deletingTx, setDeletingTx] = useState<Transaction | null>(null);
   const { toast, refresh } = useApp();
 
   useEffect(() => {
@@ -357,6 +430,13 @@ function ReviewModal({
                     onChange={(iso) => setDraft((current) => ({ ...current, [field.field_key]: isoToDdmm(iso) }))}
                     ariaLabel={FIELD_LABELS[field.field_key] ?? field.field_key}
                   />
+                ) : FIELD_CHOICES[field.field_key] ? (
+                  <Select
+                    value={draft[field.field_key] ?? ""}
+                    options={FIELD_CHOICES[field.field_key]}
+                    onChange={(value) => setDraft((current) => ({ ...current, [field.field_key]: value }))}
+                    ariaLabel={FIELD_LABELS[field.field_key] ?? field.field_key}
+                  />
                 ) : (
                   <input
                     value={draft[field.field_key] ?? ""}
@@ -380,6 +460,9 @@ function ReviewModal({
               <h3>Movimientos del resumen ({rows.length})</h3>
               <p>Los que leyó la app, más los que marques en el PDF.</p>
             </div>
+            <button type="button" className="ghost-button" onClick={refresh}>
+              <Icon name="refresh" /> Recargar
+            </button>
           </div>
           {rows.length === 0 ? (
             <EmptyState
@@ -402,6 +485,13 @@ function ReviewModal({
                       </small>
                     </span>
                     <span className="doc-movement-amount">{formatCents(row.amount_cents, row.currency)}</span>
+                    <RowMenu
+                      label={`Acciones para ${row.description}`}
+                      actions={[
+                        { label: "Editar", icon: "pencil", onSelect: () => setEditingTx(row) },
+                        { label: "Borrar", icon: "trash", danger: true, onSelect: () => setDeletingTx(row) },
+                      ]}
+                    />
                   </li>
                 ))}
             </ul>
@@ -413,11 +503,172 @@ function ReviewModal({
               Página {fields[0]?.source_page ?? 1} · evidencia conservada del documento original.
             </span>
           </div>
-          <button type="button" className="ghost-button" onClick={refresh}>
-            <Icon name="refresh" /> Recargar movimientos
-          </button>
         </div>
       </div>
+
+      {editingTx && (
+        <TransactionEditModal
+          transaction={editingTx}
+          onClose={() => setEditingTx(null)}
+          onSaved={(updated) => {
+            setRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
+            setEditingTx(null);
+            toast("Movimiento actualizado.");
+            refresh();
+          }}
+          onError={onError}
+        />
+      )}
+
+      {deletingTx && (
+        <Modal
+          title="Borrar movimiento"
+          eyebrow="Documento local"
+          size="compact"
+          onClose={() => setDeletingTx(null)}
+          footer={
+            <>
+              <button type="button" className="secondary-button" onClick={() => setDeletingTx(null)}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="danger-button"
+                onClick={() => {
+                  void removeTransaction(deletingTx, setRows, () => setDeletingTx(null), toast, onError);
+                }}
+              >
+                <Icon name="trash" /> Borrar
+              </button>
+            </>
+          }
+        >
+          <div className="confirm-body">
+            <p className="confirm-copy">
+              ¿Borrar <strong>{deletingTx.description}</strong> por{" "}
+              {formatCents(deletingTx.amount_cents, deletingTx.currency)}?
+            </p>
+            <p className="confirm-note">
+              Si volvés a correr el OCR sobre este resumen, el movimiento puede aparecer de nuevo.
+            </p>
+          </div>
+        </Modal>
+      )}
+    </Modal>
+  );
+}
+
+async function removeTransaction(
+  row: Transaction,
+  setRows: (updater: (current: Transaction[]) => Transaction[]) => void,
+  done: () => void,
+  toast: (message: string, tone?: "info" | "error") => void,
+  onError: (message: string) => void,
+): Promise<void> {
+  try {
+    await api.deleteTransaction(row.id);
+    setRows((current) => current.filter((item) => item.id !== row.id));
+    done();
+    toast("Movimiento borrado.");
+  } catch (error) {
+    onError(error instanceof Error ? error.message : "No se pudo borrar el movimiento");
+  }
+}
+
+/** Edición de un movimiento leído del resumen. */
+function TransactionEditModal({
+  transaction,
+  onClose,
+  onSaved,
+  onError,
+}: {
+  transaction: Transaction;
+  onClose: () => void;
+  onSaved: (updated: Transaction) => void;
+  onError: (message: string) => void;
+}): JSX.Element {
+  const [description, setDescription] = useState(transaction.description);
+  const [amount, setAmount] = useState(() => (transaction.amount_cents / 100).toFixed(2).replace(".", ","));
+  const [occurredOn, setOccurredOn] = useState(transaction.occurred_on.slice(0, 10));
+  const [currency, setCurrency] = useState(transaction.currency);
+  const [kind, setKind] = useState(transaction.kind);
+  const [saving, setSaving] = useState(false);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const parsed = Number(amount.replace(/\./g, "").replace(",", "."));
+    if (!Number.isFinite(parsed)) {
+      onError("Ingresá un importe válido.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const result = await api.patchTransaction(transaction.id, {
+        description: description.trim(),
+        amountCents: Math.round(parsed * 100),
+        occurredOn,
+        kind,
+      });
+      onSaved({ ...transaction, ...result.transaction, currency });
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "No se pudo guardar el movimiento");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      title="Editar movimiento"
+      eyebrow="Documento local"
+      size="money"
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="secondary-button" onClick={onClose}>
+            Cancelar
+          </button>
+          <button type="submit" form="edit-tx-form" className="primary-button" disabled={saving}>
+            <Icon name="check" /> {saving ? "Guardando…" : "Guardar"}
+          </button>
+        </>
+      }
+    >
+      <form id="edit-tx-form" className="money-form-grid" onSubmit={submit}>
+        <label>
+          <span>Descripción</span>
+          <input type="text" value={description} onChange={(event) => setDescription(event.target.value)} required />
+        </label>
+        <label>
+          <span>Importe</span>
+          <input type="text" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} />
+        </label>
+        <label>
+          <span>Fecha</span>
+          <DateInput value={occurredOn} onChange={setOccurredOn} />
+        </label>
+        <label>
+          <span>Moneda</span>
+          <Select
+            value={currency}
+            options={[
+              { value: "ARS", label: "Pesos (AR$)" },
+              { value: "USD", label: "Dólares (US$)" },
+            ]}
+            onChange={setCurrency}
+            ariaLabel="Moneda"
+          />
+        </label>
+        <label>
+          <span>Tipo</span>
+          <Select
+            value={kind}
+            options={Object.entries(KIND_LABELS).map(([value, label]) => ({ value, label }))}
+            onChange={setKind}
+            ariaLabel="Tipo de movimiento"
+          />
+        </label>
+      </form>
     </Modal>
   );
 }
@@ -570,58 +821,60 @@ function PdfViewer({
       {loading ? (
         <LoadingBlock message="Abriendo el PDF…" />
       ) : image ? (
-        <div
-          className="pdf-surface"
-          ref={surfaceRef}
-          onPointerDown={(event) => {
-            const point = pointFor(event);
-            if (!point) return;
-            (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
-            setDrag({ x0: point.x, y0: point.y, x1: point.x, y1: point.y });
-          }}
-          onPointerMove={(event) => {
-            if (!drag) return;
-            const point = pointFor(event);
-            if (!point) return;
-            setDrag({ ...drag, x1: point.x, y1: point.y });
-          }}
-          onPointerUp={() => {
-            if (!drag) return;
-            const width = Math.abs(drag.x1 - drag.x0);
-            const height = Math.abs(drag.y1 - drag.y0);
-            if (width > 0.02 && height > 0.008) {
-              setRegions((current) => [
-                ...current,
-                {
-                  x0: Math.min(drag.x0, drag.x1),
-                  y0: Math.min(drag.y0, drag.y1),
-                  x1: Math.max(drag.x0, drag.x1),
-                  y1: Math.max(drag.y0, drag.y1),
-                },
-              ]);
-            }
-            setDrag(null);
-          }}
-        >
-          <img src={image.dataUrl} alt={`Página ${page} de ${statement.filename}`} draggable={false} />
-          {highlights.map((region, index) => (
-            <span key={`read-${index}`} className="pdf-highlight" style={rectStyle(region)} />
-          ))}
-          {regions.map((region, index) => (
-            <span key={`mark-${index}`} className="pdf-mark" style={rectStyle(region)}>
-              <button
-                type="button"
-                aria-label="Quitar marca"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setRegions((current) => current.filter((_, position) => position !== index));
-                }}
-              >
-                <Icon name="close" />
-              </button>
-            </span>
-          ))}
-          {drag && <span className="pdf-mark drawing" style={rectStyle(drag)} />}
+        <div className="pdf-surface">
+          <div
+            className="pdf-page"
+            ref={surfaceRef}
+            onPointerDown={(event) => {
+              const point = pointFor(event);
+              if (!point) return;
+              (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
+              setDrag({ x0: point.x, y0: point.y, x1: point.x, y1: point.y });
+            }}
+            onPointerMove={(event) => {
+              if (!drag) return;
+              const point = pointFor(event);
+              if (!point) return;
+              setDrag({ ...drag, x1: point.x, y1: point.y });
+            }}
+            onPointerUp={() => {
+              if (!drag) return;
+              const width = Math.abs(drag.x1 - drag.x0);
+              const height = Math.abs(drag.y1 - drag.y0);
+              if (width > 0.02 && height > 0.008) {
+                setRegions((current) => [
+                  ...current,
+                  {
+                    x0: Math.min(drag.x0, drag.x1),
+                    y0: Math.min(drag.y0, drag.y1),
+                    x1: Math.max(drag.x0, drag.x1),
+                    y1: Math.max(drag.y0, drag.y1),
+                  },
+                ]);
+              }
+              setDrag(null);
+            }}
+          >
+            <img src={image.dataUrl} alt={`Página ${page} de ${statement.filename}`} draggable={false} />
+            {highlights.map((region, index) => (
+              <span key={`read-${index}`} className="pdf-highlight" style={rectStyle(region)} />
+            ))}
+            {regions.map((region, index) => (
+              <span key={`mark-${index}`} className="pdf-mark" style={rectStyle(region)}>
+                <button
+                  type="button"
+                  aria-label="Quitar marca"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setRegions((current) => current.filter((_, position) => position !== index));
+                  }}
+                >
+                  <Icon name="close" />
+                </button>
+              </span>
+            ))}
+            {drag && <span className="pdf-mark drawing" style={rectStyle(drag)} />}
+          </div>
         </div>
       ) : (
         <EmptyState icon="file" title="No pudimos mostrar el PDF" body="El archivo original puede no estar disponible." />

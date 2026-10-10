@@ -145,11 +145,12 @@ export function Modal({
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
-  size?: "money" | "review";
+  size?: "money" | "review" | "compact";
 }): JSX.Element {
+  const sizeClass = size === "money" ? "money-modal" : size === "compact" ? "confirm-modal" : "review-modal";
   return (
     <div className="modal-backdrop open" role="presentation" onClick={(event) => event.target === event.currentTarget && onClose()}>
-      <div className={`${size === "money" ? "money-modal" : "review-modal"}`} role="dialog" aria-modal="true" aria-label={title}>
+      <div className={sizeClass} role="dialog" aria-modal="true" aria-label={title}>
         <div className="modal-header">
           <div>
             {eyebrow && <span className="eyebrow">{eyebrow}</span>}

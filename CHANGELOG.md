@@ -2,6 +2,43 @@
 
 Todas las versiones siguen [SemVer](https://semver.org/lang/es/).
 
+## 0.2.1 — 2026-10-10
+
+### Revisión de documentos
+
+- **Marcar una zona del PDF** ahora usa el mismo lector por columnas que el OCR:
+  antes esa zona se leía como texto plano, duplicaba lo que ya estaba leído y
+  arrastraba el pie legal. Ahora respeta la zona marcada y no agrega de nuevo lo
+  que ya venía del resumen.
+- Se pueden **editar y borrar movimientos** desde la propia revisión (descripción,
+  importe, moneda, fecha y tipo).
+- La revisión **entra entera en la pantalla**: el PDF se ajusta al alto disponible
+  y la lista de movimientos tiene su propio espacio; se terminaron el scroll de la
+  ventana y la superposición de textos en los campos.
+- El **emisor** y la **moneda** se eligen de listas (American Express /
+  Mastercard / Visa / Otra; pesos / dólares) en vez de quedar como texto suelto.
+
+### Documentos
+
+- Se puede **borrar un documento** con sus movimientos, su pago del período, el
+  PDF y los fragmentos de memoria.
+
+### Historial de ingresos
+
+- El menú de tres puntos **ya no lo corta el contenedor** (se dibuja sobre la
+  interfaz, sin scroll) y la confirmación de borrado usa un diálogo chico con aire
+  en lugar del modal de revisión.
+
+### Copiloto
+
+- **Fuera de alcance**: una pregunta que no es de finanzas (por ejemplo una
+  cuenta) ya no se responde con el balance; el copiloto aclara para qué sirve.
+- Las **fuentes ya no se mezclan en el texto** de la respuesta: van aparte,
+  plegadas, al final.
+- Respuestas por intención cuando no hay datos ("No tenés cuotas activas
+  registradas") en vez de un texto genérico.
+- Las **sugerencias de preguntas** solo aparecen con la conversación reiniciada.
+
 ## 0.2.0 — 2026-10-10
 
 ### Resúmenes, pesos y dólares

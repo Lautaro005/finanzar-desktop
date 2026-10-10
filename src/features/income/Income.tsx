@@ -4,6 +4,7 @@ import { useState, type JSX } from "react";
 
 import { Icon } from "../../components/Icon";
 import { DateInput } from "../../components/DateField";
+import { RowMenu } from "../../components/RowMenu";
 import { EmptyState, ErrorBlock, LoadingBlock, Modal, Panel } from "../../components/ui";
 import { api } from "../../lib/backend";
 import { formatCents, formatDate } from "../../lib/format";
@@ -178,8 +179,10 @@ export function Income(): JSX.Element {
                     <td className="align-right">
                       <RowMenu
                         label={`Acciones para ${entry.source}`}
-                        onEdit={() => setEditing(entry)}
-                        onDelete={() => setDeleting(entry)}
+                        actions={[
+                          { label: "Editar", icon: "pencil", onSelect: () => setEditing(entry) },
+                          { label: "Borrar", icon: "trash", danger: true, onSelect: () => setDeleting(entry) },
+                        ]}
                       />
                     </td>
                   </tr>
@@ -208,7 +211,8 @@ export function Income(): JSX.Element {
       {deleting && (
         <Modal
           title="Borrar ingreso"
-          eyebrow="Esta acción no se puede deshacer"
+          eyebrow="Historial de ingresos"
+          size="compact"
           onClose={() => setDeleting(null)}
           footer={
             <>
@@ -221,73 +225,20 @@ export function Income(): JSX.Element {
             </>
           }
         >
-          <p className="confirm-copy">
-            ¿Borrar <strong>{deleting.source}</strong> por {formatCents(deleting.amount_cents, deleting.currency)} del{" "}
-            {formatDate(deleting.occurred_on)}?
-          </p>
-          {deleting.recurring_income_id && (
-            <p className="confirm-note">
-              Viene del sueldo automático: se anula para que no vuelva a aparecer.
+          <div className="confirm-body">
+            <p className="confirm-copy">
+              ¿Borrar <strong>{deleting.source}</strong> por {formatCents(deleting.amount_cents, deleting.currency)}{" "}
+              del {formatDate(deleting.occurred_on)}?
             </p>
-          )}
+            {deleting.recurring_income_id && (
+              <p className="confirm-note">
+                Viene del sueldo automático: se anula para que no vuelva a aparecer.
+              </p>
+            )}
+          </div>
         </Modal>
       )}
     </>
-  );
-}
-
-/** Menú de tres puntos con editar y borrar. */
-function RowMenu({
-  label,
-  onEdit,
-  onDelete,
-}: {
-  label: string;
-  onEdit: () => void;
-  onDelete: () => void;
-}): JSX.Element {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="row-menu">
-      <button
-        type="button"
-        className="icon-button"
-        aria-label={label}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        onClick={() => setOpen((current) => !current)}
-      >
-        <Icon name="more" />
-      </button>
-      {open && (
-        <>
-          <div className="row-menu-backdrop" role="presentation" onClick={() => setOpen(false)} />
-          <div className="row-menu-list" role="menu">
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setOpen(false);
-                onEdit();
-              }}
-            >
-              <Icon name="pencil" /> Editar
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              className="row-menu-danger"
-              onClick={() => {
-                setOpen(false);
-                onDelete();
-              }}
-            >
-              <Icon name="trash" /> Borrar
-            </button>
-          </div>
-        </>
-      )}
-    </div>
   );
 }
 

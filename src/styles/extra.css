@@ -587,12 +587,29 @@ svg[data-icon] [fill="currentColor"] {
   margin-top: 4px;
 }
 
-/* Revisión: la evidencia ocupa su propia línea. */
+/* Revisión: la evidencia ocupa su propia línea y se recorta si es larga. */
 .field-row {
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 118px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
 }
 .field-row .field-evidence {
-  flex: 1 1 100%;
+  grid-column: 1 / -1;
+  display: block;
+  margin: 0;
+  padding-bottom: 6px;
+  color: var(--muted, #5b6a62);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.field-row .field-evidence svg[data-icon] {
+  width: 12px;
+  height: 12px;
+  vertical-align: -2px;
 }
 
 /* Formularios en fila: que respiren y no se estiren de más. */
@@ -822,6 +839,29 @@ svg[data-icon] [fill="currentColor"] {
   margin-top: 16px;
 }
 
+/* La fila de documento ahora es un div con acciones: mantiene el cursor y el aire. */
+.document-item {
+  cursor: pointer;
+  align-items: center;
+}
+.document-item .row-menu {
+  margin-left: 4px;
+}
+
+/* En ventanas chicas la revisión no entra lado a lado: se permite scrollear. */
+@media (max-width: 900px) {
+  .review-modal {
+    height: calc(100vh - 24px);
+  }
+  .review-modal .review-content {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+  .review-modal .pdf-preview {
+    min-height: 320px;
+  }
+}
+
 /* --- Menú de fila (editar / borrar) --- */
 .row-menu {
   position: relative;
@@ -833,12 +873,11 @@ svg[data-icon] [fill="currentColor"] {
   inset: 0;
   z-index: 20;
 }
+/* Va en un portal con posición fija: así el scroll del contenedor no lo corta. */
 .row-menu-list {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
+  position: fixed;
   z-index: 21;
-  min-width: 150px;
+  min-width: 158px;
   padding: 6px;
   border-radius: 12px;
   background: var(--surface, #fff);
@@ -889,14 +928,85 @@ svg[data-icon] [fill="currentColor"] {
 .danger-button:hover {
   background: #ad332d;
 }
+
+/* Confirmaciones: diálogo chico y con aire, no el modal de revisión. */
+.confirm-modal {
+  width: min(430px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  background: var(--surface);
+  border-radius: 18px;
+  box-shadow: var(--shadow-float);
+  transform: translateY(18px);
+  transition: .25s;
+}
+.modal-backdrop.open .confirm-modal {
+  transform: none;
+}
+.confirm-modal .modal-header {
+  padding: 18px 20px;
+}
+.confirm-modal .modal-header h2 {
+  font-size: 16px;
+}
+.confirm-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px 4px;
+}
+.confirm-modal .modal-footer {
+  padding: 16px 20px 18px;
+}
 .confirm-copy {
-  margin: 4px 0 0;
-  line-height: 1.5;
+  margin: 0;
+  line-height: 1.55;
+  font-size: 13px;
 }
 .confirm-note {
-  margin: 10px 0 0;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff7e6;
+  color: #7a5b12;
   font-size: 12px;
-  color: var(--muted, #5b6a62);
+  line-height: 1.5;
+}
+
+/* --- Revisión: entra entera en la pantalla (sin scroll de la ventana) --- */
+.review-modal {
+  width: min(1120px, 100%);
+  height: min(880px, calc(100vh - 36px));
+  max-height: calc(100vh - 36px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.review-modal .review-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: 18px;
+  padding: 18px 20px;
+}
+.review-modal .pdf-preview,
+.review-modal .extracted-fields {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.review-modal .pdf-preview {
+  min-height: 0;
+}
+.review-modal .extracted-fields > .doc-movements {
+  flex: 1 1 auto;
+  min-height: 90px;
+  overflow-y: auto;
+}
+.review-modal .field-list {
+  max-height: none;
 }
 
 /* --- Visor del PDF en la revisión --- */
@@ -905,6 +1015,8 @@ svg[data-icon] [fill="currentColor"] {
   flex-direction: column;
   gap: 10px;
   padding: 14px;
+  min-height: 0;
+  height: 100%;
 }
 .pdf-viewer-bar {
   display: flex;
@@ -923,12 +1035,30 @@ svg[data-icon] [fill="currentColor"] {
   touch-action: none;
   cursor: crosshair;
   user-select: none;
+  /* La página se ajusta al alto disponible: nada de scroll vertical. */
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.pdf-surface img {
-  display: block;
-  width: 100%;
-  height: auto;
+/* El contenedor de la página mide exactamente lo que la imagen: así las marcas
+   y los resaltados (en %) quedan alineados aunque la página no llene el ancho. */
+.pdf-page {
+  position: relative;
   max-width: 100%;
+  max-height: 100%;
+  line-height: 0;
+  cursor: crosshair;
+  user-select: none;
+  touch-action: none;
+}
+.pdf-page img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
 }
 .pdf-highlight,
 .pdf-mark {
@@ -998,13 +1128,24 @@ svg[data-icon] [fill="currentColor"] {
 }
 .doc-movements li {
   display: grid;
-  grid-template-columns: 84px 1fr auto;
-  gap: 10px;
+  grid-template-columns: 74px minmax(0, 1fr) auto auto;
+  gap: 8px;
   align-items: center;
-  padding: 8px 10px;
+  padding: 6px 8px;
   border: 1px solid var(--line, #e2e7e3);
   border-radius: 10px;
-  font-size: 13px;
+  font-size: 12px;
+}
+.doc-movements .icon-button {
+  width: 26px;
+  height: 26px;
+}
+.doc-movements .icon-button svg[data-icon] {
+  width: 15px;
+  height: 15px;
+}
+.doc-movements .row-menu {
+  justify-content: center;
 }
 .doc-movement-date {
   font-variant-numeric: tabular-nums;
