@@ -24,6 +24,11 @@ dependencies = [
   "pillow>=10.4.0",
   "python-multipart>=0.0.12",
   "platformdirs>=4.3.0",
+  # chromadb trae onnxruntime, que dejó de publicar wheels para macOS Intel
+  # después de 1.23.2: sin el pin, el sidecar para x86_64-apple-darwin no se
+  # puede ni instalar (la app nunca usa el embedder por defecto de chromadb,
+  # así que la versión vieja es suficiente).
+  "onnxruntime==1.23.2; sys_platform == 'darwin' and platform_machine == 'x86_64'",
 ]
 
 [project.optional-dependencies]
