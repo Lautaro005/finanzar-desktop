@@ -68,6 +68,13 @@ _FINANCE_HINTS = (
     "disponible",
     "mes",
     "plata",
+    "consum",
+    "movimiento",
+    "gasté",
+    "gaste",
+    "compra",
+    "compré",
+    "compre",
 )
 
 SYSTEM_PROMPT = (
@@ -104,6 +111,8 @@ _INTENTS: dict[str, tuple[str, ...]] = {
     "goals": ("meta", "ahorro", "objetivo", "emergencia", "fondo"),
     "monthly": ("mes pasado", "cambió", "diferencia", "comparar", "comparación"),
     "duplicates": ("repetido", "duplicado", "dos veces", "similar"),
+    # "¿cuáles fueron mis consumos?" no era del alcance y el copiloto se negaba.
+    "spending": ("consum", "gasté", "gaste", "mis gastos", "gastos del mes", "movimientos", "en qué gast"),
     "balance": ("balance", "disponible", "plata", "cuánto puedo gastar", "gastar"),
 }
 
@@ -114,12 +123,14 @@ class Source:
     label: str
     kind: str
     amount_cents: int | None = None
+    currency: str = "ARS"
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {"id": self.id, "label": self.label, "kind": self.kind}
         if self.amount_cents is not None:
             payload["amountCents"] = self.amount_cents
-            payload["amount"] = format_ars(self.amount_cents)
+            payload["amount"] = format_ars(self.amount_cents, self.currency)
+            payload["currency"] = self.currency
         return payload
 
 
@@ -172,11 +183,23 @@ class Copilot:
         engine: FinanceEngine,
         memory: MemoryStore,
         client: LlamaClient | None,
+        user_name: str | None = None,
     ) -> None:
         self.repo = repo
         self.engine = engine
         self.memory = memory
         self.client = client
+        self.user_name = (user_name or "").strip() or None
+
+    def system_prompt(self) -> str:
+        """Prompt del sistema, con el nombre de la persona cuando lo cargó."""
+        if not self.user_name:
+            return SYSTEM_PROMPT
+        return (
+            f"{SYSTEM_PROMPT}\n"
+            f"La persona que te consulta se llama {self.user_name}: podés dirigirte a ella por su "
+            "nombre si queda natural, sin saludar en cada respuesta."
+        )
 
     # -- evidencia --------------------------------------------------------
     def gather_evidence(self, question: str, period: str | None = None) -> list[Source]:
@@ -281,6 +304,38 @@ class Copilot:
                 if insight["kind"] == "duplicate":
                     sources.append(Source(f"insight:{insight['id']}", insight["title"], "insight"))
 
+        if "spending" in intents:
+            summary = self.engine.spending_summary(period)
+            if summary["count"]:
+                sources.append(
+                    Source(
+                        f"spending:{period}",
+                        f"Consumos {period} ({summary['count']} movimientos)",
+                        "spending",
+                        summary["totalCents"],
+                    )
+                )
+                for item in summary["topCategories"]:
+                    sources.append(
+                        Source(
+                            f"category:{item['category']}",
+                            f"Categoría {item['category']}",
+                            "spending_category",
+                            item["amountCents"],
+                        )
+                    )
+                for currency, amount in summary["byCurrency"].items():
+                    if currency != "ARS":
+                        sources.append(
+                            Source(
+                                f"spending:{currency}",
+                                f"Consumos en {currency}",
+                                "spending_currency",
+                                amount,
+                                currency,
+                            )
+                        )
+
         if "monthly" in intents or "general" in intents:
             for insight in self.repo.list_insights():
                 if insight["kind"] == "monthly_comparison":
@@ -334,14 +389,18 @@ class Copilot:
     def _evidence_block(self, sources: list[Source]) -> str:
         lines = []
         for source in sources:
-            amount = f" = {format_ars(source.amount_cents)}" if source.amount_cents is not None else ""
+            amount = (
+                f" = {format_ars(source.amount_cents, source.currency)}"
+                if source.amount_cents is not None
+                else ""
+            )
             lines.append(f"[{source.id}] {source.label}{amount}")
         return "\n".join(lines)
 
     def _answer_with_llm(self, question: str, sources: list[Source], period: str | None) -> CopilotAnswer:
         assert self.client is not None
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": self.system_prompt()},
             {
                 "role": "user",
                 "content": (
@@ -433,6 +492,20 @@ class Copilot:
             lines.append("No hay suscripciones activas registradas.")
         if "goal" in by_kind:
             lines.append(f"Tus metas: {'; '.join(s.label for s in by_kind['goal'])}.")
+        if "spending" in by_kind:
+            total = by_kind["spending"][0]
+            lines.append(f"{total.label}: {format_ars(total.amount_cents or 0)}.")
+            categories = by_kind.get("spending_category", [])
+            if categories:
+                detail = ", ".join(
+                    f"{source.label.replace('Categoría ', '')} {format_ars(source.amount_cents or 0)}"
+                    for source in categories[:3]
+                )
+                lines.append(f"Donde más gastaste: {detail}.")
+            for source in by_kind.get("spending_currency", []):
+                lines.append(f"{source.label}: {format_ars(source.amount_cents or 0, source.currency)}.")
+        elif "spending" in intents:
+            lines.append("No hay consumos registrados en este período.")
         if "recurring_income" in by_kind:
             lines.append(f"Próximo ingreso: {by_kind['recurring_income'][0].label}.")
         if "insight" in by_kind:

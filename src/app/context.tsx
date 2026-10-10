@@ -1,8 +1,18 @@
 /** Estado global de la aplicación (período, avisos, copiloto, modales). */
 
-import { createContext, useCallback, useContext, useMemo, useState, type JSX, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type JSX,
+  type ReactNode,
+} from "react";
 
 import type { ToastMessage } from "../components/ui";
+import { api } from "../lib/backend";
 import { currentPeriod } from "../lib/format";
 
 export type Route =
@@ -13,7 +23,8 @@ export type Route =
   | "calendar"
   | "movements"
   | "spreadsheet"
-  | "settings";
+  | "settings"
+  | "profile";
 
 export interface MoneyModalIntent {
   mode: "income" | "salary";
@@ -38,6 +49,10 @@ interface AppContextValue {
   setBackendReady: (ready: boolean) => void;
   backendBase: string | null;
   setBackendBase: (base: string | null) => void;
+  userName: string;
+  setUserName: (name: string) => void;
+  onboardingDone: boolean;
+  setOnboardingDone: (done: boolean) => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -51,6 +66,29 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
   const [moneyIntent, setMoneyIntent] = useState<MoneyModalIntent | null>(null);
   const [backendReady, setBackendReady] = useState(false);
   const [backendBase, setBackendBase] = useState<string | null>(null);
+  const [userName, setUserName] = useState("");
+  // Arranca en "hecho" para no mostrar el asistente mientras el backend responde;
+  // el bootstrap lo corrige con lo guardado en app_settings.
+  const [onboardingDone, setOnboardingDone] = useState(true);
+
+  useEffect(() => {
+    if (!backendReady) return;
+    let cancelled = false;
+    api
+      .bootstrap()
+      .then((data) => {
+        if (cancelled) return;
+        const stored = (data.settings ?? {}) as Record<string, string>;
+        setUserName(stored.user_name ?? "");
+        setOnboardingDone(stored.onboarding_done === "true");
+      })
+      .catch(() => {
+        /* si falla, se sigue con lo que haya */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [backendReady]);
 
   const toast = useCallback((text: string, tone: "info" | "error" = "info") => {
     const id = Date.now() + Math.random();
@@ -84,8 +122,25 @@ export function AppProvider({ children }: { children: ReactNode }): JSX.Element 
       setBackendReady,
       backendBase,
       setBackendBase,
+      userName,
+      setUserName,
+      onboardingDone,
+      setOnboardingDone,
     }),
-    [route, period, refreshKey, toasts, toast, dismissToast, chatOpen, moneyIntent, backendReady, backendBase],
+    [
+      route,
+      period,
+      refreshKey,
+      toasts,
+      toast,
+      dismissToast,
+      chatOpen,
+      moneyIntent,
+      backendReady,
+      backendBase,
+      userName,
+      onboardingDone,
+    ],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

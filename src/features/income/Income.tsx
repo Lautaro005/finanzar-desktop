@@ -1,10 +1,11 @@
 /** Ingresos: sueldo recurrente (activar/pausar) e historial de ingresos. */
 
-import { useState, type JSX } from "react";
+import { useEffect, useMemo, useState, type JSX } from "react";
 
 import { Icon } from "../../components/Icon";
 import { DateInput } from "../../components/DateField";
 import { RowMenu } from "../../components/RowMenu";
+import { Select } from "../../components/Select";
 import { EmptyState, ErrorBlock, LoadingBlock, Modal, Panel } from "../../components/ui";
 import { api } from "../../lib/backend";
 import { formatCents, formatDate } from "../../lib/format";
@@ -12,15 +13,40 @@ import { useAsync } from "../../lib/hooks";
 import { useApp } from "../../app/context";
 import type { IncomeEntry } from "../../types/api";
 
+const CURRENCY_OPTIONS = [
+  { value: "ARS", label: "Pesos (AR$)" },
+  { value: "USD", label: "Dólares (US$)" },
+];
+
 export function Income(): JSX.Element {
-  const { toast, refresh, refreshKey, openMoney } = useApp();
+  const { toast, refresh, refreshKey, openMoney, setRoute } = useApp();
   const incomes = useAsync(() => api.incomes(), [refreshKey]);
+  const accounts = useAsync(() => api.accounts(), [refreshKey]);
   const [punctualAmount, setPunctualAmount] = useState("");
   const [punctualSource, setPunctualSource] = useState("");
   const [punctualDate, setPunctualDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [punctualAccount, setPunctualAccount] = useState("");
+  const [punctualCurrency, setPunctualCurrency] = useState("ARS");
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<IncomeEntry | null>(null);
   const [deleting, setDeleting] = useState<IncomeEntry | null>(null);
+
+  const accountList = accounts.data?.accounts ?? [];
+  const accountOptions = useMemo(
+    () => accountList.map((account) => ({ value: account.id, label: `${account.name} (${account.currency})` })),
+    [accountList],
+  );
+  const accountNames = useMemo(
+    () => new Map(accountList.map((account) => [account.id, account.name])),
+    [accountList],
+  );
+
+  useEffect(() => {
+    if (!punctualAccount && accountList.length > 0) {
+      setPunctualAccount(accountList[0].id);
+      setPunctualCurrency(accountList[0].currency || "ARS");
+    }
+  }, [accountList, punctualAccount]);
 
   const addPunctual = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -29,12 +55,18 @@ export function Income(): JSX.Element {
       toast("Ingresá un importe válido.", "error");
       return;
     }
+    if (!punctualAccount) {
+      toast("Elegí la cuenta donde entra el ingreso.", "error");
+      return;
+    }
     setSaving(true);
     try {
       await api.createIncome({
         amountCents: Math.round(parsed * 100),
         source: punctualSource.trim() || "Ingreso",
         kind: "punctual",
+        accountId: punctualAccount,
+        currency: punctualCurrency,
         occurredOn: punctualDate,
       });
       toast("Ingreso puntual registrado.");
@@ -112,7 +144,8 @@ export function Income(): JSX.Element {
                   <div className="list-row-copy">
                     <strong>{item.name}</strong>
                     <small>
-                      {formatCents(item.amount_cents)} · día {item.day_of_month} de cada mes
+                      {formatCents(item.amount_cents, item.currency)} · día {item.day_of_month} de cada mes ·{" "}
+                      {item.account_id ? (accountNames.get(item.account_id) ?? "Cuenta") : "Sin cuenta"}
                     </small>
                   </div>
                   <button
@@ -130,29 +163,68 @@ export function Income(): JSX.Element {
         </Panel>
 
         <Panel title="Registrar un ingreso" subtitle="Puntual, bono o transferencia.">
-          <form className="stack-form" onSubmit={addPunctual}>
-            <label>
-              <span>Importe</span>
-              <input
-                value={punctualAmount}
-                onChange={(event) => setPunctualAmount(event.target.value)}
-                inputMode="decimal"
-                placeholder="0"
-                required
-              />
-            </label>
-            <label>
-              <span>Origen</span>
-              <input value={punctualSource} onChange={(event) => setPunctualSource(event.target.value)} placeholder="Freelance" />
-            </label>
-            <label>
-              <span>Fecha</span>
-              <DateInput value={punctualDate} onChange={setPunctualDate} />
-            </label>
-            <button type="submit" className="primary-button" disabled={saving}>
-              <Icon name="check" /> {saving ? "Guardando…" : "Registrar ingreso"}
-            </button>
-          </form>
+          {accounts.data && accountList.length === 0 ? (
+            <div className="form-notice" role="alert">
+              <Icon name="wallet" />
+              <div>
+                <strong>Primero agregá una cuenta</strong>
+                <span>El ingreso se acredita en una cuenta; si no, las cuentas quedan en cero.</span>
+              </div>
+              <button type="button" className="secondary-button" onClick={() => setRoute("accounts")}>
+                <Icon name="plus" /> Crear cuenta
+              </button>
+            </div>
+          ) : (
+            <form className="stack-form" onSubmit={addPunctual}>
+              <label>
+                <span>Importe</span>
+                <input
+                  value={punctualAmount}
+                  onChange={(event) => setPunctualAmount(event.target.value)}
+                  inputMode="decimal"
+                  placeholder="0"
+                  required
+                />
+              </label>
+              <label>
+                <span>Cuenta</span>
+                <Select
+                  value={punctualAccount}
+                  options={accountOptions}
+                  onChange={(next) => {
+                    setPunctualAccount(next);
+                    const found = accountList.find((account) => account.id === next);
+                    if (found?.currency) setPunctualCurrency(found.currency);
+                  }}
+                  ariaLabel="Cuenta donde entra el ingreso"
+                />
+              </label>
+              <label>
+                <span>Moneda</span>
+                <Select
+                  value={punctualCurrency}
+                  options={CURRENCY_OPTIONS}
+                  onChange={setPunctualCurrency}
+                  ariaLabel="Moneda del ingreso"
+                />
+              </label>
+              <label>
+                <span>Origen</span>
+                <input
+                  value={punctualSource}
+                  onChange={(event) => setPunctualSource(event.target.value)}
+                  placeholder="Freelance"
+                />
+              </label>
+              <label>
+                <span>Fecha</span>
+                <DateInput value={punctualDate} onChange={setPunctualDate} />
+              </label>
+              <button type="submit" className="primary-button" disabled={saving || accountList.length === 0}>
+                <Icon name="check" /> {saving ? "Guardando…" : "Registrar ingreso"}
+              </button>
+            </form>
+          )}
         </Panel>
       </div>
 
@@ -165,8 +237,9 @@ export function Income(): JSX.Element {
                   <th>Fecha</th>
                   <th>Origen</th>
                   <th>Tipo</th>
+                  <th>Cuenta</th>
                   <th className="align-right">Importe</th>
-                  <th className="align-right">Acciones</th>
+                  <th className="actions-column" aria-label="Acciones"></th>
                 </tr>
               </thead>
               <tbody>
@@ -175,8 +248,9 @@ export function Income(): JSX.Element {
                     <td>{formatDate(entry.occurred_on)}</td>
                     <td className="movement-name">{entry.source}</td>
                     <td>{entry.kind}</td>
+                    <td>{entry.account_id ? (accountNames.get(entry.account_id) ?? "Cuenta") : "Sin cuenta"}</td>
                     <td className="amount-cell">{formatCents(entry.amount_cents, entry.currency)}</td>
-                    <td className="align-right">
+                    <td className="align-right actions-cell">
                       <RowMenu
                         label={`Acciones para ${entry.source}`}
                         actions={[
@@ -198,6 +272,8 @@ export function Income(): JSX.Element {
       {editing && (
         <EditIncomeModal
           entry={editing}
+          accounts={accountOptions}
+          accountCurrency={(id) => accountList.find((account) => account.id === id)?.currency ?? "ARS"}
           onClose={() => setEditing(null)}
           onSaved={() => {
             toast("Ingreso actualizado.");
@@ -244,11 +320,15 @@ export function Income(): JSX.Element {
 
 function EditIncomeModal({
   entry,
+  accounts,
+  accountCurrency,
   onClose,
   onSaved,
   onError,
 }: {
   entry: IncomeEntry;
+  accounts: Array<{ value: string; label: string }>;
+  accountCurrency: (id: string) => string;
   onClose: () => void;
   onSaved: () => void;
   onError: (message: string) => void;
@@ -258,6 +338,8 @@ function EditIncomeModal({
   );
   const [source, setSource] = useState(entry.source);
   const [occurredOn, setOccurredOn] = useState(entry.occurred_on.slice(0, 10));
+  const [accountId, setAccountId] = useState(entry.account_id ?? "");
+  const [currency, setCurrency] = useState(entry.currency);
   const [saving, setSaving] = useState(false);
 
   const submit = async (event: React.FormEvent) => {
@@ -267,11 +349,17 @@ function EditIncomeModal({
       onError("Ingresá un importe válido.");
       return;
     }
+    if (!accountId) {
+      onError("Elegí la cuenta donde entra el ingreso.");
+      return;
+    }
     setSaving(true);
     try {
       await api.patchIncome(entry.id, {
         amountCents: Math.round(parsed * 100),
         source: source.trim() || entry.source,
+        accountId,
+        currency,
         occurredOn,
       });
       onSaved();
@@ -313,6 +401,22 @@ function EditIncomeModal({
         <label>
           <span>Origen</span>
           <input type="text" value={source} onChange={(event) => setSource(event.target.value)} />
+        </label>
+        <label>
+          <span>Cuenta</span>
+          <Select
+            value={accountId}
+            options={accounts}
+            onChange={(next) => {
+              setAccountId(next);
+              setCurrency(accountCurrency(next));
+            }}
+            ariaLabel="Cuenta donde entra el ingreso"
+          />
+        </label>
+        <label>
+          <span>Moneda</span>
+          <Select value={currency} options={CURRENCY_OPTIONS} onChange={setCurrency} ariaLabel="Moneda del ingreso" />
         </label>
         <label>
           <span>Fecha</span>

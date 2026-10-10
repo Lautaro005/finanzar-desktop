@@ -2,6 +2,97 @@
 
 Todas las versiones siguen [SemVer](https://semver.org/lang/es/).
 
+## 0.2.5 — 2026-10-10
+
+### Primer arranque
+
+- Nuevo **asistente de primer arranque** en cinco pasos: tu nombre, los modelos,
+  las cuentas, el sueldo o ingreso y el primer resumen (opcional). Nada se
+  descarga solo: cada modelo se baja cuando lo pedís y con **barra de progreso**.
+- Spark-X2.5-1.7B y el runtime de llama.cpp quedan como pasos **obligatorios**;
+  para leer resúmenes se elige entre la **lectura rápida por columnas** (sin
+  descargas) y **GLM-OCR**; **EmbeddingGemma-2** es opcional y mejora la memoria
+  del copiloto.
+
+### Dólares (USD)
+
+- Se pueden crear **cuentas en dólares** y cargar ingresos en USD.
+- El **dashboard muestra los pesos y, debajo, los dólares** en cada indicador (sin
+  convertir: no hay tipo de cambio en la app).
+- Los importes por moneda se informan por separado en cuentas, ingresos, total a
+  pagar y en la planilla de Datos; editar una cuenta o un ingreso incluye la
+  moneda.
+
+### Perfil local
+
+- Nueva pantalla de **Perfil** (el chip del sidebar y el engranaje al final):
+  **nombre** (el copiloto te llama por tu nombre y el sidebar lo muestra),
+  **tarjetas** (American Express, Mastercard, Visa, más las que agregues) y
+  **categorías** de movimientos.
+- Las categorías del perfil **se aplican solas** al importar un resumen: si el
+  nombre de la categoría aparece en la descripción del consumo, gana esa; el
+  resto usa las reglas de comercios conocidos.
+
+### Documentos y revisión
+
+- El detalle del documento suma un **toggle Información / Movimientos**: al pasar
+  a movimientos, los consumos de la tarjeta aparecen **separados en consumos e
+  impuestos y percepciones**.
+- Las cuatro filas de datos (cierre, vencimiento, pago mínimo y total) ocupan el
+  ancho completo y el **workflow termina la columna**: «Confirmado» es el último
+  paso.
+- En la revisión, **datos extraídos y movimientos del resumen tienen la misma
+  altura** y los datos se organizan en **tres columnas**.
+- **Arreglado**: el menú de tres puntos de los movimientos no respondía dentro de
+  la revisión (quedaba detrás del diálogo).
+- Al cargar un PDF aparece un **placeholder con animación** hasta que el resumen
+  termina de leerse.
+
+### Calendario, movimientos y señales
+
+- **Próximos eventos** ya no muestra lo que pasó: sólo de hoy en adelante.
+- La pantalla de **Movimientos** muestra todo lo extraído del resumen, incluidos
+  los consumos del mes anterior (antes se filtraba sólo por el mes del movimiento).
+- El dashboard **saca el botón de preguntarle a la IA** del encabezado y deja
+  «Agregar dinero» y «Cargar resumen» al final de la fila; el período se elige con
+  un **dropdown de meses** (en el dashboard y en Datos) en lugar de tipear.
+- Las **señales para mirar** son concretas y automáticas: comparación mensual con
+  la categoría que explica la diferencia, mayor gasto del mes y consumos en
+  dólares.
+
+### Ingresos
+
+- Registrar un ingreso o un sueldo **exige una cuenta**: si no hay ninguna, la app
+  explica y lleva a crearla (antes el sueldo entraba al balance y las cuentas
+  quedaban en cero).
+- El historial muestra la columna **Cuenta** y los tres puntos pasan al final.
+
+### Copiloto y memoria
+
+- Preguntas de consumos («¿cuáles fueron mis consumos?») **ya no caen en «fuera
+  de alcance»**: responden con el total del período, las categorías con más peso y
+  los consumos en dólares.
+- **Memoria con embeddings**: se agregó **EmbeddingGemma-2** (Q8_0, 768
+  dimensiones) como modelo opcional; cuando está descargado, el copiloto busca por
+  significado en vez de por texto. Verificado en local: requiere **llama.cpp
+  b11552** (la b10828 no carga el modelo). Sin el modelo, la memoria sigue
+  funcionando con el embedding por hashing.
+
+### OCR
+
+- El extractor (prompt y heurística) **ignora el bloque saldado del período
+  anterior**: SALDO ANTERIOR, SU PAGO y la devolución de impuestos no entran como
+  consumos del período.
+
+### Releases e infraestructura
+
+- **Arreglado el release**: el build de macOS Intel pedía el runner `macos-13`,
+  que GitHub ya no ofrece, así que quedaba «queued» para siempre y la release
+  nunca se publicaba (quedaba vacía). Ahora usa `macos-15-intel`.
+- El runtime de llama.cpp sube a **b11552** y el selector de binario prefiere la
+  build fijada (antes podía quedarse con una vieja descargada en el mismo
+  directorio).
+
 ## 0.2.1 — 2026-10-10
 
 ### Revisión de documentos

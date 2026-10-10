@@ -1,25 +1,19 @@
 {
   "schema": 1,
-  "generatedAt": "2026-10-09",
-  "notes": "Revisiones y hashes verificados contra Hugging Face y GitHub el 2026-10-09. No cambiar sin re-verificar hashes y licencias.",
+  "generatedAt": "2026-10-10",
+  "notes": "Revisiones y hashes verificados contra Hugging Face y GitHub. No cambiar sin re-verificar hashes y licencias. 2026-10-10: embeddinggemma-2 verificado en local (Q8_0, sha256 comprobado) y el runtime de llama.cpp sube a b11552 porque la b10828 no carga ese modelo.",
   "models": [
     {
       "id": "glm-ocr",
       "name": "GLM-OCR",
       "kind": "ocr",
-      "required": true,
+      "required": false,
       "repo": "zai-org/GLM-OCR",
       "revision": "2e85a62840ccac27daa451df36c736c4636b8628",
       "license": "MIT",
       "sourceUrl": "https://huggingface.co/zai-org/GLM-OCR",
       "approxBytes": 2650579464,
-      "allowPatterns": [
-        "*.json",
-        "*.jinja",
-        "*.txt",
-        "*.model",
-        "*.safetensors"
-      ],
+      "allowPatterns": ["*.json", "*.jinja", "*.txt", "*.model", "*.safetensors"],
       "files": [
         {
           "path": "model.safetensors",
@@ -27,7 +21,7 @@
           "sha256": "a16eb0de98d199293371c560f95f83130d2a2c9612449df16839f08ff9498815"
         }
       ],
-      "notes": "Carga directa con AutoProcessor + GlmOcrForConditionalGeneration (Transformers 5). No usar el pipeline image-to-text."
+      "notes": "Carga directa con AutoProcessor + GlmOcrForConditionalGeneration (Transformers 5). No usar el pipeline image-to-text. Es opcional: sin él la app lee resúmenes con capa de texto (lector por columnas) y no sube la memoria."
     },
     {
       "id": "pp-doclayout-v3",
@@ -39,11 +33,7 @@
       "license": "Apache-2.0",
       "sourceUrl": "https://huggingface.co/PaddlePaddle/PP-DocLayoutV3",
       "approxBytes": 130000000,
-      "allowPatterns": [
-        "*.json",
-        "*.yml",
-        "*.pdiparams"
-      ],
+      "allowPatterns": ["*.json", "*.yml", "*.pdiparams"],
       "files": [
         { "path": "inference.pdiparams", "bytes": null, "sha256": null },
         { "path": "inference.json", "bytes": null, "sha256": null },
@@ -77,6 +67,34 @@
         }
       ],
       "notes": "Runtime llama.cpp con soporte nativo spark2_5 (>= b10828). Servidor OpenAI-compatible en loopback."
+    },
+    {
+      "id": "embeddinggemma-2",
+      "name": "EmbeddingGemma-2 Q8_0",
+      "kind": "embeddings",
+      "required": false,
+      "repo": "ggml-org/embeddinggemma-2-GGUF",
+      "revision": "bfcd298762cc34d0357ece5ebdd31791a3a374d8",
+      "license": "Apache-2.0",
+      "sourceUrl": "https://huggingface.co/ggml-org/embeddinggemma-2-GGUF",
+      "approxBytes": 309855456,
+      "defaultQuantization": "Q8_0",
+      "quantizations": [
+        {
+          "name": "Q8_0",
+          "file": "embeddinggemma-2-Q8_0.gguf",
+          "bytes": 309855456,
+          "sha256": "2188ac1deca4b77dffefd603c2776a9d76d9d74ec01841392982ebb840b09135"
+        },
+        {
+          "name": "BF16",
+          "file": "embeddinggemma-2-BF16.gguf",
+          "bytes": 557950176,
+          "sha256": "68bae29d62fb8c7d23e98d21fd4662753ddd636e6b62b8a70dfe059a9844f216",
+          "advanced": true
+        }
+      ],
+      "notes": "Embeddings de 768 dimensiones para la memoria del copiloto (llama-server --embedding --pooling mean). Verificado en local el 2026-10-10: sha256 del Q8_0 comprobado y requiere llama.cpp b11552 o posterior (la b10828 no lo carga). Sin este modelo la memoria usa el embedding por hashing."
     }
   ],
   "runtime": {
@@ -85,18 +103,18 @@
       "name": "llama.cpp server",
       "repo": "ggml-org/llama.cpp",
       "license": "MIT",
-      "minimumBuild": "b10828",
-      "build": "b10828",
+      "minimumBuild": "b11552",
+      "build": "b11552",
       "sourceUrl": "https://github.com/ggml-org/llama.cpp",
       "assets": {
         "aarch64-apple-darwin": {
-          "name": "llama-b10828-bin-macos-arm64.tar.gz",
-          "bytes": 11133769,
+          "name": "llama-b11552-bin-macos-arm64.tar.gz",
+          "bytes": 12086252,
           "archive": "tar.gz"
         },
         "x86_64-apple-darwin": {
-          "name": "llama-b10828-bin-macos-x64.tar.gz",
-          "bytes": 11188497,
+          "name": "llama-b11552-bin-macos-x64.tar.gz",
+          "bytes": 11615016,
           "archive": "tar.gz"
         }
       }

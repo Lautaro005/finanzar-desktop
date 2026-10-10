@@ -16,8 +16,13 @@ reportes.
 - **Fuente de verdad:** SQLite con migraciones.
 - **Memoria semántica:** ChromaDB `PersistentClient`.
 - **OCR:** [`zai-org/GLM-OCR`](https://huggingface.co/zai-org/GLM-OCR) (MIT).
+  Opcional: sin él, los resúmenes con capa de texto se leen por **layout** (las
+  columnas de pesos y dólares del PDF), sin cargar nada en memoria.
 - **Copiloto:** [`XHToken/Spark-X2.5-1.7B-GGUF`](https://huggingface.co/XHToken/Spark-X2.5-1.7B-GGUF)
   (Q4_K_M, Apache-2.0) servido por `llama.cpp` (`llama-server`, MIT).
+- **Memoria (opcional):** [`ggml-org/embeddinggemma-2-GGUF`](https://huggingface.co/ggml-org/embeddinggemma-2-GGUF)
+  (Q8_0, 768 dimensiones) para buscar por significado en los resúmenes confirmados;
+  sin el modelo la memoria usa un embedding por hashing.
 
 ## Arranque en un comando
 
@@ -29,7 +34,9 @@ cd finanzar-desktop
 
 `dev.sh` verifica herramientas, crea entornos, comprueba espacio libre, descarga
 y verifica los modelos en el primer arranque, compila el sidecar del backend,
-levanta el backend local e **abre la ventana de FinanzAR**.
+levanta el backend local e **abre la ventana de FinanzAR**. La primera vez, la
+app abre un **asistente de primeros pasos** (nombre, modelos, cuentas, sueldo y,
+si querés, el primer resumen).
 
 Requisitos de desarrollo: Rust (rustup), Node 20+, `uv` y `git`.
 La app instalada **no requiere Python**.

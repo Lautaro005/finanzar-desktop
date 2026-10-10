@@ -10,7 +10,7 @@ const dashboardFixture: DashboardData = {
   period: "2026-10",
   balance: {
     totalCents: 132280000,
-    byCurrency: { ARS: 132280000 },
+    byCurrency: { ARS: 132280000, USD: 1500 },
     accounts: [
       {
         id: "acc1",
@@ -118,6 +118,22 @@ describe("Dashboard", () => {
     render(<Dashboard />, { wrapper });
     await waitFor(() =>
       expect(screen.getByText(/no se descuentan dos veces/)).toBeInTheDocument(),
+    );
+  });
+
+  it("elige el período con un dropdown y no muestra el botón de la IA", async () => {
+    render(<Dashboard />, { wrapper });
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Período" })).toBeInTheDocument());
+    // El encabezado ya no ofrece "Preguntarle a la IA": quedan los botones de acción.
+    expect(screen.queryByText("Preguntarle a la IA")).toBeNull();
+    expect(screen.getByRole("button", { name: /Agregar dinero/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Cargar resumen/ })).toBeInTheDocument();
+  });
+
+  it("muestra los dólares debajo de los pesos cuando hay saldo en USD", async () => {
+    render(<Dashboard />, { wrapper });
+    await waitFor(() =>
+      expect(screen.getAllByText("US$ 15,00 en dólares").length).toBeGreaterThan(0),
     );
   });
 });

@@ -42,6 +42,10 @@ class LlamaConfig:
     context_size: int = 8192
     threads: int = 0
     binary: Path | None = None
+    # Modo embeddings (embeddinggemma-2): el servidor no genera texto, devuelve
+    # vectores en ``/v1/embeddings``.
+    embedding: bool = False
+    pooling: str | None = None
 
 
 class LlamaServer:
@@ -78,6 +82,10 @@ class LlamaServer:
         ]
         if self.config.threads:
             args += ["-t", str(self.config.threads)]
+        if self.config.embedding:
+            args += ["--embedding"]
+            if self.config.pooling:
+                args += ["--pooling", self.config.pooling]
         self.log_path = log_path
         handle = None
         if log_path is not None:
@@ -110,13 +118,25 @@ class LlamaServer:
         self.process = None
 
 
-def resolve_binary(binary_dir: Path, repo_models_dir: Path | None = None) -> Path | None:
-    """Busca ``llama-server`` en: override, datos de la app, repo o PATH."""
+def resolve_binary(binary_dir: Path, repo_models_dir: Path | None = None, build: str | None = None) -> Path | None:
+    """Busca ``llama-server`` en: override, datos de la app, repo o PATH.
+
+    ``build`` es la build fijada en el manifest: si se indica, se prefiere esa
+    carpeta (``llama-<build>``) para no quedarse con una build vieja que quedó
+    descargada en el mismo directorio.
+    """
     override = os.environ.get("FINANZAR_LLAMA_SERVER")
     candidates: list[Path] = []
     if override:
         candidates.append(Path(override).expanduser())
     target = current_target()
+    if build:
+        candidates += [
+            binary_dir / "llama-server" / f"llama-{build}" / "llama-server",
+            binary_dir / "llama-server" / build / "llama-server",
+        ]
+        if repo_models_dir is not None:
+            candidates.append(repo_models_dir / "llama-server" / f"llama-{build}" / "llama-server")
     candidates += [
         binary_dir / "llama-server" / "build" / "bin" / "llama-server",
         binary_dir / "llama-server" / target / "llama-server",

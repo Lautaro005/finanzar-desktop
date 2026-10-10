@@ -148,25 +148,73 @@ class FinanceEngine:
             result.append({**account, "balance_cents": balance})
         return result
 
-    def consolidated_balance(self) -> int:
-        """Balance consolidado de todas las cuentas activas.
+    def balances_by_currency(self) -> dict[str, int]:
+        """Saldo disponible por moneda, sin convertir: pesos y dólares aparte.
 
-        Incluye los ingresos y los pagos que no tienen cuenta asignada: el sueldo
-        recurrente casi nunca trae cuenta, y si esos importes no sumaran el
-        balance quedaría en cero aunque la persona cargue ingresos.
+        No hay tipo de cambio en la app, así que sumar pesos con dólares daría un
+        número falso. Cada moneda se informa por separado y el balance
+        "consolidado" toma la moneda base (ARS).
         """
+        result: dict[str, int] = {}
         accounts = self.account_balances()
-        total = sum(a["balance_cents"] for a in accounts)
         account_ids = {a["id"] for a in accounts}
+        for account in accounts:
+            currency = (account.get("currency") or "ARS").upper()
+            result[currency] = result.get(currency, 0) + account["balance_cents"]
         for entry in self.repo.list_income_entries():
             if entry.get("account_id") not in account_ids:
-                total += entry["amount_cents"]
+                currency = (entry.get("currency") or "ARS").upper()
+                result[currency] = result.get(currency, 0) + entry["amount_cents"]
         cards = {card["id"]: card for card in self.repo.list_cards()}
         for payment in self.repo.list_payments(status="paid"):
             card = cards.get(payment.get("card_id") or "")
             if (card.get("account_id") if card else None) not in account_ids:
-                total -= payment["amount_cents"]
-        return total
+                currency = (payment.get("currency") or "ARS").upper()
+                result[currency] = result.get(currency, 0) - payment["amount_cents"]
+        return result
+
+    def consolidated_balance(self) -> int:
+        """Balance consolidado en la moneda base (ARS).
+
+        Incluye los ingresos y los pagos que no tienen cuenta asignada: el sueldo
+        recurrente casi nunca trae cuenta, y si esos importes no sumaran el
+        balance quedaría en cero aunque la persona cargue ingresos. Los saldos en
+        dólares viajan aparte (``balances_by_currency``).
+        """
+        return self.balances_by_currency().get("ARS", 0)
+
+    def spending_summary(self, period: str | None = None) -> dict[str, Any]:
+        """Consumos confirmados del período: total, monedas y por categoría.
+
+        Se usa para responder "¿cuáles fueron mis consumos?" sin depender del
+        modelo chico. Incluye compras, cuotas, suscripciones e impuestos.
+        """
+        period = period or period_of(today())
+        rows = self.repo.db.query(
+            "SELECT category, currency, COALESCE(SUM(amount_cents), 0) AS total, COUNT(*) AS count "
+            "FROM transactions "
+            "WHERE user_id = ? AND substr(occurred_on, 1, 7) = ? "
+            "AND kind IN ('purchase','installment','subscription','fee','tax') "
+            "GROUP BY category, currency",
+            (self.repo.user_id, period),
+        )
+        by_category: dict[str, int] = {}
+        by_currency: dict[str, int] = {}
+        count = 0
+        for row in rows:
+            category = row["category"] or "Sin categoría"
+            by_category[category] = by_category.get(category, 0) + int(row["total"])
+            currency = (row["currency"] or "ARS").upper()
+            by_currency[currency] = by_currency.get(currency, 0) + int(row["total"])
+            count += int(row["count"])
+        top = sorted(by_category.items(), key=lambda item: item[1], reverse=True)[:5]
+        return {
+            "period": period,
+            "count": count,
+            "byCurrency": by_currency,
+            "totalCents": by_currency.get("ARS", 0),
+            "topCategories": [{"category": name, "amountCents": amount} for name, amount in top],
+        }
 
     def income_for_period(self, period: str) -> int:
         start, end = month_bounds(period)
@@ -176,6 +224,17 @@ class FinanceEngine:
             (self.repo.user_id, start.isoformat(), end.isoformat()),
         )
         return int(rows[0]["total"]) if rows else 0
+
+    def income_by_currency_for_period(self, period: str) -> dict[str, int]:
+        """Ingresos del período separados por moneda (no se convierten)."""
+        start, end = month_bounds(period)
+        rows = self.repo.db.query(
+            "SELECT COALESCE(currency, 'ARS') AS currency, COALESCE(SUM(amount_cents), 0) AS total "
+            "FROM income_entries WHERE user_id = ? AND occurred_on >= ? AND occurred_on <= ? "
+            "GROUP BY currency",
+            (self.repo.user_id, start.isoformat(), end.isoformat()),
+        )
+        return {str(row["currency"]).upper(): int(row["total"]) for row in rows}
 
     def next_recurring_credit(self, reference: date | None = None) -> dict[str, Any] | None:
         reference = reference or today()
@@ -211,19 +270,25 @@ class FinanceEngine:
 
     def total_to_pay(self, period: str) -> dict[str, Any]:
         rows = self.repo.db.query(
-            "SELECT COALESCE(SUM(amount_cents), 0) AS total, COUNT(*) AS count FROM payments "
-            "WHERE user_id = ? AND status != 'paid' AND substr(due_date, 1, 7) = ?",
+            "SELECT COALESCE(currency, 'ARS') AS currency, COALESCE(SUM(amount_cents), 0) AS total, "
+            "COUNT(*) AS count FROM payments "
+            "WHERE user_id = ? AND status != 'paid' AND substr(due_date, 1, 7) = ? GROUP BY currency",
             (self.repo.user_id, period),
         )
         paid = self.repo.db.query(
-            "SELECT COALESCE(SUM(amount_cents), 0) AS total FROM payments "
-            "WHERE user_id = ? AND status = 'paid' AND substr(due_date, 1, 7) = ?",
+            "SELECT COALESCE(currency, 'ARS') AS currency, COALESCE(SUM(amount_cents), 0) AS total "
+            "FROM payments WHERE user_id = ? AND status = 'paid' AND substr(due_date, 1, 7) = ? "
+            "GROUP BY currency",
             (self.repo.user_id, period),
         )
+        pending_by_currency = {str(row["currency"]).upper(): int(row["total"]) for row in rows}
+        paid_by_currency = {str(row["currency"]).upper(): int(row["total"]) for row in paid}
         return {
-            "pendingCents": int(rows[0]["total"]) if rows else 0,
-            "pendingCount": int(rows[0]["count"]) if rows else 0,
-            "paidCents": int(paid[0]["total"]) if paid else 0,
+            "pendingCents": pending_by_currency.get("ARS", 0),
+            "pendingCount": sum(int(row["count"]) for row in rows),
+            "paidCents": paid_by_currency.get("ARS", 0),
+            "byCurrency": pending_by_currency,
+            "paidByCurrency": paid_by_currency,
         }
 
     # -- proyección -------------------------------------------------------
@@ -440,9 +505,8 @@ class FinanceEngine:
         self.apply_recurring_income()
         start, end = month_bounds(period)
         accounts = self.account_balances()
-        balances: dict[str, int] = {}
-        for account in accounts:
-            balances[account["currency"]] = balances.get(account["currency"], 0) + account["balance_cents"]
+        # Saldos por moneda incluyendo ingresos y pagos sin cuenta asignada.
+        balances = self.balances_by_currency()
 
         statements = self.repo.list_statements()
         pending_documents = [s for s in statements if s["status"] not in {"confirmed"}]
@@ -455,6 +519,7 @@ class FinanceEngine:
             },
             "income": {
                 "monthCents": self.income_for_period(period),
+                "byCurrency": self.income_by_currency_for_period(period),
                 "recurring": self.repo.list_recurring_income(),
                 "nextCredit": self.next_recurring_credit(),
             },

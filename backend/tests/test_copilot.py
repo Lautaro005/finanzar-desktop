@@ -153,6 +153,50 @@ def test_copilot_installments_without_data_says_so(context) -> None:
     assert "no tenés cuotas activas" in answer.answer.lower()
 
 
+def test_copilot_answers_spending_questions(context) -> None:
+    """«¿Cuáles fueron mis consumos?» ya no cae en «fuera de alcance»."""
+    context.repo.insert_transactions(
+        [
+            {
+                "id": new_id("tx"),
+                "occurred_on": "2026-10-05",
+                "description": "MERPAGO*SUPER",
+                "category": "Alimentación",
+                "amount_cents": to_cents("32000"),
+                "currency": "ARS",
+                "kind": "purchase",
+                "confirmed": 1,
+            },
+            {
+                "id": new_id("tx"),
+                "occurred_on": "2026-10-06",
+                "description": "APPLE.COM/BILL",
+                "category": "Suscripción",
+                "amount_cents": 199,
+                "currency": "USD",
+                "kind": "subscription",
+                "confirmed": 1,
+            },
+        ]
+    )
+    copilot = Copilot(context.repo, context.engine, context.memory, None, user_name="Lautaro")
+    answer = copilot.answer("¿Cuáles fueron mis consumos?", "2026-10")
+    assert answer.answer != OUT_OF_SCOPE
+    assert answer.evidence_available is True
+    assert "consumos" in answer.answer.lower()
+    assert "AR$" in answer.answer
+    assert "US$" in answer.answer
+    # El nombre cargado en el perfil llega al prompt del copiloto.
+    assert "Lautaro" in copilot.system_prompt()
+
+
+def test_copilot_spending_without_movements_says_so(context) -> None:
+    context.repo.create_account(new_id("acc"), {"name": "Banco", "opening_balance_cents": 0})
+    copilot = Copilot(context.repo, context.engine, context.memory, None)
+    answer = copilot.answer("¿cuáles fueron mis consumos?", "2026-10")
+    assert "no hay consumos" in answer.answer.lower()
+
+
 def test_copilot_strips_sources_written_by_the_model(context) -> None:
     context.repo.create_account(new_id("acc"), {"name": "Banco", "opening_balance_cents": to_cents("100000")})
 

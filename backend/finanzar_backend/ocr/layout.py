@@ -42,6 +42,12 @@ _SKIP_KEYWORDS = (
     "saldo anterior",
     "saldo actual",
     "su pago",
+    "pago anterior",
+    # El bloque del período anterior ya está saldado: no se carga.
+    "dev.imp",
+    "dev. imp",
+    "devolucion imp",
+    "devolución imp",
     "pago minimo",
     "pago min",
     "total consumos",

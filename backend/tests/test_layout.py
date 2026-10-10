@@ -44,11 +44,15 @@ def make_two_column_statement_pdf(path: Path) -> Path:
     # Encabezado de la tabla de consumos y las dos columnas de importes.
     put_row(180, [(0, "FECHA COMPROBANTE DETALLE DE TRANSACCION"), right_aligned("PESOS", 70),
                   right_aligned("DOLARES", 92)])
-    put_row(200, [(0, "03.09.26"), (10, "MERPAGO*CAMILAPIROYANSKY"), right_aligned("3.209,70", 70)])
-    put_row(215, [(0, "29.08.26"), (10, "APPLE.COM/BILL   MVWTV4   USD   1,99"),
+    # Bloque del período anterior (ya saldado): no debe entrar como movimiento.
+    put_row(195, [(0, "SALDO ANTERIOR"), right_aligned("60.145,24", 70)])
+    put_row(210, [(0, "03.09.26"), (10, "SU PAGO EN PESOS"), right_aligned("51.061,24-", 70)])
+    put_row(225, [(0, "03.09.26"), (10, "SU PAGO EN USD"), right_aligned("20,00-", 92)])
+    put_row(240, [(0, "04.09.26"), (10, "DEV.IMP. RG 5617 30%"), right_aligned("9.084,00-", 70)])
+    put_row(255, [(0, "03.09.26"), (10, "MERPAGO*CAMILAPIROYANSKY"), right_aligned("3.209,70", 70)])
+    put_row(270, [(0, "29.08.26"), (10, "APPLE.COM/BILL   MVWTV4   USD   1,99"),
                   right_aligned("1,99", 92)])
-    put_row(230, [(0, "04.09.26"), (10, "DEV.IMP. RG 5617 30%"), right_aligned("9.084,00-", 70)])
-    put_row(245, [(0, "01.10.26"), (10, "DB.RG 5617 30%"), right_aligned("13.188,79", 70)])
+    put_row(285, [(0, "01.10.26"), (10, "DB.RG 5617 30%"), right_aligned("13.188,79", 70)])
     _ = char_width
     doc.save(str(path))
     doc.close()
@@ -78,10 +82,11 @@ def test_layout_separates_pesos_and_dolares(tmp_path: Path) -> None:
     assert db_rg.currency == "ARS"
     assert db_rg.kind == "tax"
     assert db_rg.amount_cents == 1_318_879
-    # Devolución de impuesto: importe negativo.
-    devolucion = by_description["DEV.IMP. RG 5617 30%"]
-    assert devolucion.amount_cents == -908_400
-    assert devolucion.kind == "tax"
+    # El bloque del período anterior ya está saldado: SALDO ANTERIOR, SU PAGO y
+    # la devolución de impuestos no se cargan como consumos del período.
+    assert "DEV.IMP. RG 5617 30%" not in by_description
+    assert not any("SU PAGO" in description.upper() for description in by_description)
+    assert not any("SALDO ANTERIOR" in description.upper() for description in by_description)
 
     # Consumo en dólares: va a suscripciones y queda en USD (no convertido).
     assert len(result.subscriptions) == 1

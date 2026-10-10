@@ -42,11 +42,26 @@ def test_spark_default_quantization_and_hashes() -> None:
 def test_llama_runtime_build_and_targets() -> None:
     manifest = load_manifest()
     runtime = manifest.runtime["llamaCpp"]
-    assert runtime.build == "b10828"
-    assert runtime.minimum_build == "b10828"
+    assert runtime.build == "b11552"
+    assert runtime.minimum_build == "b11552"
     assert "aarch64-apple-darwin" in runtime.assets
     assert "x86_64-apple-darwin" in runtime.assets
-    assert runtime.assets["aarch64-apple-darwin"].name == "llama-b10828-bin-macos-arm64.tar.gz"
+    assert runtime.assets["aarch64-apple-darwin"].name == "llama-b11552-bin-macos-arm64.tar.gz"
+
+
+def test_embeddinggemma_is_pinned_with_verified_hash() -> None:
+    """embeddinggemma-2 para la memoria: revisión, hash y licencia fijadas."""
+    manifest = load_manifest()
+    model = manifest.model("embeddinggemma-2")
+    assert model.kind == "embeddings"
+    assert model.required is False
+    assert model.repo == "ggml-org/embeddinggemma-2-GGUF"
+    assert model.revision == "bfcd298762cc34d0357ece5ebdd31791a3a374d8"
+    assert model.license == "Apache-2.0"
+    assert model.default_quantization == "Q8_0"
+    q8 = model.quantization("Q8_0")
+    assert q8.bytes == 309855456
+    assert q8.sha256 == "2188ac1deca4b77dffefd603c2776a9d76d9d74ec01841392982ebb840b09135"
 
 
 def test_unknown_model_raises() -> None:

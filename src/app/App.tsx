@@ -1,6 +1,6 @@
 /** Shell de la aplicación: sidebar, topbar, ruteo y overlays. */
 
-import { useEffect, useState, type JSX } from "react";
+import { useEffect, useMemo, useState, type JSX } from "react";
 
 import { BrandLockup, BrandMark } from "../components/Brand";
 import { Icon } from "../components/Icon";
@@ -15,6 +15,8 @@ import { Dashboard } from "../features/dashboard/Dashboard";
 import { Documents } from "../features/documents/Documents";
 import { Income } from "../features/income/Income";
 import { MoneyModal } from "../features/income/MoneyModal";
+import { Onboarding } from "../features/onboarding/Onboarding";
+import { Profile } from "../features/profile/Profile";
 import { Settings } from "../features/settings/Settings";
 import { Spreadsheet } from "../features/spreadsheet/Spreadsheet";
 import { Transactions } from "../features/transactions/Transactions";
@@ -40,6 +42,7 @@ const TITLES: Record<Route, string> = {
   movements: "Movimientos",
   spreadsheet: "Datos",
   settings: "Configuración",
+  profile: "Perfil",
 };
 
 function BackendGate(): JSX.Element | null {
@@ -95,8 +98,14 @@ function BackendGate(): JSX.Element | null {
 }
 
 function Shell(): JSX.Element {
-  const { route, setRoute, chatOpen, setChatOpen, moneyIntent, closeMoney, toasts, dismissToast } = useApp();
+  const { route, setRoute, chatOpen, setChatOpen, moneyIntent, closeMoney, toasts, dismissToast, userName } = useApp();
   const [menuOpen, setMenuOpen] = useState(false);
+
+  const initials = useMemo(() => {
+    const parts = userName.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return "LP";
+    return (parts[0][0] + (parts[1]?.[0] ?? "")).toUpperCase();
+  }, [userName]);
 
   const go = (next: Route) => {
     setRoute(next);
@@ -119,6 +128,8 @@ function Shell(): JSX.Element {
         return <Spreadsheet />;
       case "settings":
         return <Settings />;
+      case "profile":
+        return <Profile />;
       case "dashboard":
       default:
         return <Dashboard />;
@@ -160,13 +171,28 @@ function Shell(): JSX.Element {
             </span>
             <span>Copiloto local</span>
           </button>
-          <div className="profile-chip">
-            <div className="avatar">LP</div>
+          <button
+            type="button"
+            className={`profile-chip ${route === "profile" ? "active" : ""}`}
+            onClick={() => go("profile")}
+            aria-label="Abrir tu perfil local"
+          >
+            <div className="avatar">{initials}</div>
             <div>
-              <strong>Perfil local</strong>
+              <strong>{userName || "Perfil local"}</strong>
               <small>Sin sincronización</small>
             </div>
-          </div>
+          </button>
+          <button
+            type="button"
+            className={`help-link sidebar-settings ${route === "settings" ? "active" : ""}`}
+            onClick={() => go("settings")}
+          >
+            <span className="nav-icon">
+              <Icon name="settings" />
+            </span>
+            <span>Configuración</span>
+          </button>
         </div>
       </aside>
 
@@ -203,6 +229,7 @@ function Shell(): JSX.Element {
       </main>
 
       <BackendGate />
+      <Onboarding />
       <CopilotDrawer open={chatOpen} onClose={() => setChatOpen(false)} />
       {moneyIntent && <MoneyModal mode={moneyIntent.mode} onClose={closeMoney} />}
       <ToastStack messages={toasts} onDismiss={dismissToast} />

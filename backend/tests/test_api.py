@@ -35,8 +35,11 @@ def test_health_envelope(client) -> None:
 def test_bootstrap_lists_models_and_runtime(client) -> None:
     data = _data(client.get("/api/bootstrap"))
     ids = {model["id"] for model in data["models"]}
-    assert {"glm-ocr", "spark-x2.5-1.7b"}.issubset(ids)
-    assert data["runtime"]["build"] == "b10828"
+    assert {"glm-ocr", "spark-x2.5-1.7b", "embeddinggemma-2"}.issubset(ids)
+    assert data["runtime"]["build"] == "b11552"
+    # Sin el modelo descargado, la memoria informa el embedder por hashing.
+    assert data["embeddings"]["installed"] is False
+    assert data["embeddings"]["memory"]["embedder"] == "hash-256"
 
 
 def test_account_crud(client) -> None:
@@ -64,15 +67,42 @@ def test_income_updates_balance(client) -> None:
     assert data["balanceCents"] == 500000
 
 
-def test_income_without_account_still_updates_balance(client) -> None:
-    """El sueldo no trae cuenta: tiene que sumar igual al balance disponible."""
-    data = _data(client.post("/api/incomes", json={"amount": "32000,00", "source": "Sueldo"}))
+def test_income_requires_an_account(client) -> None:
+    """Un ingreso va a una cuenta: si no, la plata no aparece en ninguna."""
+    without_accounts = client.post("/api/incomes", json={"amount": "32000,00", "source": "Sueldo"})
+    assert without_accounts.status_code == 422
+    assert _error(without_accounts)["code"] == "account_required"
+
+    account = _data(client.post("/api/accounts", json={"name": "Banco"}))["account"]
+    missing_account = client.post("/api/incomes", json={"amount": "32000,00", "source": "Sueldo"})
+    assert _error(missing_account)["code"] == "account_required"
+
+    data = _data(
+        client.post(
+            "/api/incomes",
+            json={"amount": "32000,00", "source": "Sueldo", "accountId": account["id"]},
+        )
+    )
+    assert data["entry"]["account_id"] == account["id"]
     assert data["balanceCents"] == 3_200_000
+
+    # La cuenta muestra el ingreso acreditado, no cero.
+    dashboard = _data(client.get("/api/dashboard", params={"month": "2026-10"}))
+    assert dashboard["balance"]["accounts"][0]["balance_cents"] == 3_200_000
 
 
 def test_income_edit_and_delete(client) -> None:
+    account = _data(client.post("/api/accounts", json={"name": "Banco"}))["account"]
     created = _data(
-        client.post("/api/incomes", json={"amountCents": 150000, "source": "Freelance", "occurredOn": "2026-10-05"})
+        client.post(
+            "/api/incomes",
+            json={
+                "amountCents": 150000,
+                "source": "Freelance",
+                "occurredOn": "2026-10-05",
+                "accountId": account["id"],
+            },
+        )
     )
     entry_id = created["entry"]["id"]
 
@@ -244,3 +274,70 @@ def test_models_status_endpoint(client) -> None:
 def test_jobs_endpoint(client) -> None:
     data = _data(client.get("/api/jobs"))
     assert "jobs" in data
+
+
+def test_account_in_dollars_and_dashboard_shows_both_currencies(client) -> None:
+    """Se pueden cargar cuentas en dólares y el dashboard las informa aparte."""
+    _data(client.post("/api/accounts", json={"name": "Banco", "currency": "ARS", "openingBalance": "1000,00"}))
+    _data(client.post("/api/accounts", json={"name": "Dólares", "currency": "USD", "openingBalance": "150,00"}))
+    accounts = _data(client.get("/api/accounts"))["accounts"]
+    assert {account["currency"] for account in accounts} == {"ARS", "USD"}
+
+    dashboard = _data(client.get("/api/dashboard", params={"month": "2026-10"}))
+    assert dashboard["balance"]["byCurrency"]["ARS"] == 100000
+    assert dashboard["balance"]["byCurrency"]["USD"] == 15000
+
+
+def test_statement_movements_show_with_the_statement_period(client, tmp_path: Path) -> None:
+    """Un resumen trae consumos del mes anterior: el filtro por período los incluye."""
+    pdf = make_statement_pdf(tmp_path / "resumen.pdf")
+    imported = _data(
+        client.post(
+            "/api/documents/import", files={"file": ("resumen.pdf", pdf.read_bytes(), "application/pdf")}
+        )
+    )
+    statement_id = imported["document"]["id"]
+    _data(client.post(f"/api/documents/{statement_id}/ocr", params={"prefer": "native"}))
+    _data(
+        client.post(
+            f"/api/documents/{statement_id}/transactions",
+            json={
+                "transactions": [
+                    {"occurredOn": "2026-09-20", "description": "Cuota notebook", "amount": "10.000,00"}
+                ]
+            },
+        )
+    )
+    # El período del resumen es 2026-10 aunque el consumo sea de septiembre.
+    transactions = _data(client.get("/api/transactions", params={"month": "2026-10"}))["transactions"]
+    assert any(tx["description"] == "Cuota notebook" for tx in transactions)
+
+
+def test_custom_categories_are_applied_on_import(client, tmp_path: Path) -> None:
+    """Las categorías del perfil se aplican solas a los movimientos del resumen."""
+    _data(
+        client.patch(
+            "/api/settings",
+            json={"values": {"user_categories": '["Mascotas", "Alimentación"]'}},
+        )
+    )
+    pdf = make_statement_pdf(tmp_path / "resumen.pdf")
+    imported = _data(
+        client.post(
+            "/api/documents/import", files={"file": ("resumen.pdf", pdf.read_bytes(), "application/pdf")}
+        )
+    )
+    statement_id = imported["document"]["id"]
+    _data(client.post(f"/api/documents/{statement_id}/ocr", params={"prefer": "native"}))
+    _data(
+        client.post(
+            f"/api/documents/{statement_id}/transactions",
+            json={"transactions": [{"occurredOn": "2026-10-08", "description": "Petshop Mascotas", "amount": "5.000,00"}]},
+        )
+    )
+    transactions = _data(client.get(f"/api/documents/{statement_id}/review"))["transactions"]
+    petshop = next(tx for tx in transactions if tx["description"] == "Petshop Mascotas")
+    assert petshop["category"] == "Mascotas"
+    # Las categorías propias no pisan las reglas cuando el nombre no aparece.
+    farmacity = next(tx for tx in transactions if "Farmacity" in tx["description"])
+    assert farmacity["category"] == "Salud"

@@ -68,6 +68,11 @@ export function CalendarScreen(): JSX.Element {
     .slice()
     .sort((a, b) => a.event_date.localeCompare(b.event_date));
 
+  // "Próximos eventos" no muestra lo que ya pasó: un vencimiento del mes
+  // anterior no es próximo, aunque el rango visible del calendario lo incluya.
+  const todayIso = iso(today);
+  const upcoming = agenda.filter((event) => event.event_date.slice(0, 10) >= todayIso);
+
   const shift = (delta: number) => {
     const next = new Date(cursor.year, cursor.month + delta, 1);
     setCursor({ year: next.getFullYear(), month: next.getMonth() });
@@ -134,16 +139,24 @@ export function CalendarScreen(): JSX.Element {
           </div>
         </Panel>
 
-        <Panel title="Próximos eventos" subtitle="Ordenados por fecha." className="agenda-panel">
+        <Panel title="Próximos eventos" subtitle="De hoy en adelante, ordenados por fecha." className="agenda-panel">
           {calendar.loading && !calendar.data ? (
             <LoadingBlock />
           ) : calendar.error ? (
             <ErrorBlock message={calendar.error} onRetry={calendar.reload} />
-          ) : agenda.length === 0 ? (
-            <EmptyState icon="calendar" title="Sin eventos este mes" body="Cargá ingresos y resúmenes confirmados para verlos." />
+          ) : upcoming.length === 0 ? (
+            <EmptyState
+              icon="calendar"
+              title={agenda.length > 0 ? "Sin eventos próximos" : "Sin eventos este mes"}
+              body={
+                agenda.length > 0
+                  ? "Los eventos que ves en el calendario ya pasaron."
+                  : "Cargá ingresos y resúmenes confirmados para verlos."
+              }
+            />
           ) : (
             <div className="agenda-list">
-              {agenda.map((event) => (
+              {upcoming.map((event) => (
                 <div key={event.id} className={`agenda-item ${KIND_CLASS[event.kind] ?? "payment"}`}>
                   <div className="agenda-date">
                     <strong>{event.event_date.slice(-2)}</strong>

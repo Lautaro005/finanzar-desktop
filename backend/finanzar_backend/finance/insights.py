@@ -24,11 +24,38 @@ def _previous_period(period: str) -> str:
 def _sum_by_period(engine: FinanceEngine, period: str) -> dict[str, int]:
     rows = engine.repo.db.query(
         "SELECT category, COALESCE(SUM(amount_cents), 0) AS total FROM transactions "
-        "WHERE user_id = ? AND substr(occurred_on, 1, 7) = ? AND kind IN ('purchase','subscription','fee','tax') "
+        "WHERE user_id = ? AND substr(occurred_on, 1, 7) = ? "
+        "AND kind IN ('purchase','installment','subscription','fee','tax') "
         "GROUP BY category",
         (engine.repo.user_id, period),
     )
     return {(row["category"] or "Sin categoría"): int(row["total"]) for row in rows}
+
+
+def _biggest_change(
+    current: dict[str, int], previous: dict[str, int]
+) -> tuple[str, int, int] | None:
+    """Categoría con la variación más grande en pesos respecto del mes anterior."""
+    best: tuple[str, int, int] | None = None
+    for category in set(current) | set(previous):
+        delta = current.get(category, 0) - previous.get(category, 0)
+        if best is None or abs(delta) > abs(best[2]):
+            best = (category, previous.get(category, 0), delta)
+    if best is None or best[2] == 0:
+        return None
+    return best
+
+
+def _currency_totals(engine: FinanceEngine, period: str) -> dict[str, int]:
+    rows = engine.repo.db.query(
+        "SELECT COALESCE(currency, 'ARS') AS currency, COALESCE(SUM(amount_cents), 0) AS total, "
+        "COUNT(*) AS count FROM transactions "
+        "WHERE user_id = ? AND substr(occurred_on, 1, 7) = ? "
+        "AND kind IN ('purchase','installment','subscription','fee','tax') "
+        "GROUP BY currency",
+        (engine.repo.user_id, period),
+    )
+    return {str(row["currency"]).upper(): int(row["total"]) for row in rows}
 
 
 def find_duplicates(engine: FinanceEngine, period: str) -> list[dict[str, Any]]:
@@ -81,14 +108,28 @@ def generate_insights(engine: FinanceEngine, period: str) -> list[dict[str, Any]
     if previous_total > 0:
         delta = previous_total - current_total
         percent = round(abs(delta) / previous_total * 100, 1)
+        change = _biggest_change(current, previous)
+        # La señal nombra la categoría que explica la diferencia: sin eso es un
+        # aviso genérico que no dice nada de los datos de la persona.
+        detail = ""
+        if change and change[2] != 0:
+            category, _, category_delta = change
+            direction = "más" if category_delta > 0 else "menos"
+            detail = (
+                f" La mayor diferencia está en {category}: "
+                f"{abs(category_delta) / 100:,.2f} {direction}.".replace(",", ".")
+            )
         if delta > 0:
             insights.append(
                 {
                     "id": new_id("ins"),
                     "kind": "monthly_comparison",
                     "period": period,
-                    "title": f"Tus gastos fijos bajaron {percent}%",
-                    "body": "El total de consumos del mes es menor que el del mes pasado.",
+                    "title": f"Gastaste {percent}% menos que el mes pasado",
+                    "body": (
+                        f"En {period} sumaste AR$ {current_total / 100:,.2f} y el mes anterior "
+                        f"AR$ {previous_total / 100:,.2f}.{detail}"
+                    ).replace(",", "."),
                     "severity": "good",
                     "query": "SELECT category, SUM(amount_cents) FROM transactions GROUP BY category",
                     "evidence": [
@@ -104,8 +145,11 @@ def generate_insights(engine: FinanceEngine, period: str) -> list[dict[str, Any]
                     "id": new_id("ins"),
                     "kind": "monthly_comparison",
                     "period": period,
-                    "title": f"Tus consumos subieron {percent}%",
-                    "body": "El total del mes supera al del mes pasado. Revisá las categorías con más peso.",
+                    "title": f"Gastaste {percent}% más que el mes pasado",
+                    "body": (
+                        f"En {period} sumaste AR$ {current_total / 100:,.2f} y el mes anterior "
+                        f"AR$ {previous_total / 100:,.2f}.{detail}"
+                    ).replace(",", "."),
                     "severity": "review",
                     "query": "SELECT category, SUM(amount_cents) FROM transactions GROUP BY category",
                     "evidence": [
@@ -114,6 +158,49 @@ def generate_insights(engine: FinanceEngine, period: str) -> list[dict[str, Any]
                     ],
                 }
             )
+
+    if current:
+        top_category, top_total = max(current.items(), key=lambda item: item[1])
+        insights.append(
+            {
+                "id": new_id("ins"),
+                "kind": "top_category",
+                "period": period,
+                "title": f"Tu mayor gasto del mes fue {top_category}",
+                "body": (
+                    f"Sumó AR$ {top_total / 100:,.2f} sobre un total de AR$ {current_total / 100:,.2f} "
+                    f"en consumos del resumen."
+                ).replace(",", "."),
+                "severity": "info",
+                "query": "SELECT category, SUM(amount_cents) FROM transactions GROUP BY category LIMIT 1",
+                "evidence": [
+                    {"label": "Categoría", "text": top_category},
+                    {"label": "Total de la categoría", "amountCents": top_total},
+                    {"label": "Total del mes", "amountCents": current_total},
+                ],
+            }
+        )
+
+    currencies = _currency_totals(engine, period)
+    if currencies.get("USD"):
+        insights.append(
+            {
+                "id": new_id("ins"),
+                "kind": "usd_spending",
+                "period": period,
+                "title": "Este mes tuviste consumos en dólares",
+                "body": (
+                    f"Consumiste US$ {currencies['USD'] / 100:,.2f}, además de "
+                    f"AR$ {currencies.get('ARS', 0) / 100:,.2f} en pesos."
+                ).replace(",", "."),
+                "severity": "info",
+                "query": "SELECT currency, SUM(amount_cents) FROM transactions GROUP BY currency",
+                "evidence": [
+                    {"label": "Dólares", "amountCents": currencies["USD"]},
+                    {"label": "Pesos", "amountCents": currencies.get("ARS", 0)},
+                ],
+            }
+        )
 
     for duplicate in find_duplicates(engine, period):
         insights.append(
