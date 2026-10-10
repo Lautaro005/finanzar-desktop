@@ -1,0 +1,58 @@
+name: Updater manifest
+
+on:
+  workflow_run:
+    workflows: ["Release macOS"]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  manifest:
+    name: Publicar latest.json firmado
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Descargar artefactos del release
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: finanzar-*
+          merge-multiple: true
+
+      - name: Construir el manifiesto del updater
+        id: manifest
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          python - <<'PY' > latest.json
+          import json, os, pathlib
+          base = pathlib.Path("artifacts")
+          version = os.environ.get("GITHUB_REF_NAME", "0.0.0").lstrip("v")
+          platforms = {}
+          for target in ("aarch64", "x86_64"):
+              archives = list(base.glob(f"**/finanzar-{target}*/**/*.app.tar.gz"))
+              signatures = list(base.glob(f"**/finanzar-{target}*/**/*.app.tar.gz.sig"))
+              if not archives:
+                  continue
+              key = f"darwin-{'aarch64' if target == 'aarch64' else 'x86_64'}"
+              platforms[key] = {
+                  "signature": signatures[0].read_text().strip() if signatures else "",
+                  "url": archives[0].name,
+              }
+          print(json.dumps({
+              "version": version,
+              "notes": "Generado automáticamente por CI. Instalación sujeta a consentimiento del usuario.",
+              "pub_date": "2026-01-01T00:00:00Z",
+              "platforms": platforms,
+          }, indent=2, ensure_ascii=False))
+          PY
+
+      - name: Publicar el manifiesto en el release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" latest.json --clobber

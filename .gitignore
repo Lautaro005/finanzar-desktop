@@ -1,0 +1,70 @@
+# --- Documentos de trabajo (solo locales, fuera del repositorio) ---
+AGENT.md
+PLAN.md
+PRODUCT.md
+TODO.md
+QWEN_PROMPT.md
+prototipo/
+.DS_Store
+
+# --- Modelos descargados (nunca versionar) ---
+models/glm-ocr/
+models/spark/
+models/**/*.gguf
+models/**/*.safetensors
+models/**/*.bin
+models/**/blobs/
+models/llama-server/
+
+# --- Datos privados / base local ---
+*.sqlite
+*.sqlite3
+*.db
+data/
+**/finanzar_data/
+backups/
+*.pdf
+!docs/**/*.pdf
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+*.spec
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+pyinstaller-build/
+pyinstaller-dist/
+
+# --- Node / frontend ---
+node_modules/
+dist-js/
+.vite/
+coverage/
+
+# --- Rust / Tauri ---
+target/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/binaries/
+src-tauri/icon-source.png
+
+# --- Entornos y secretos ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# --- Sistema / editor ---
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.log

@@ -1,0 +1,105 @@
+{
+  "schema": 1,
+  "generatedAt": "2026-10-09",
+  "notes": "Revisiones y hashes verificados contra Hugging Face y GitHub el 2026-10-09. No cambiar sin re-verificar hashes y licencias.",
+  "models": [
+    {
+      "id": "glm-ocr",
+      "name": "GLM-OCR",
+      "kind": "ocr",
+      "required": true,
+      "repo": "zai-org/GLM-OCR",
+      "revision": "2e85a62840ccac27daa451df36c736c4636b8628",
+      "license": "MIT",
+      "sourceUrl": "https://huggingface.co/zai-org/GLM-OCR",
+      "approxBytes": 2650579464,
+      "allowPatterns": [
+        "*.json",
+        "*.jinja",
+        "*.txt",
+        "*.model",
+        "*.safetensors"
+      ],
+      "files": [
+        {
+          "path": "model.safetensors",
+          "bytes": 2650579464,
+          "sha256": "a16eb0de98d199293371c560f95f83130d2a2c9612449df16839f08ff9498815"
+        }
+      ],
+      "notes": "Carga directa con AutoProcessor + GlmOcrForConditionalGeneration (Transformers 5). No usar el pipeline image-to-text."
+    },
+    {
+      "id": "pp-doclayout-v3",
+      "name": "PP-DocLayoutV3",
+      "kind": "layout",
+      "required": false,
+      "repo": "PaddlePaddle/PP-DocLayoutV3",
+      "revision": "241f8bdfc77a7c7bee915a5057aaee58c235a8d3",
+      "license": "Apache-2.0",
+      "sourceUrl": "https://huggingface.co/PaddlePaddle/PP-DocLayoutV3",
+      "approxBytes": 130000000,
+      "allowPatterns": [
+        "*.json",
+        "*.yml",
+        "*.pdiparams"
+      ],
+      "files": [
+        { "path": "inference.pdiparams", "bytes": null, "sha256": null },
+        { "path": "inference.json", "bytes": null, "sha256": null },
+        { "path": "inference.yml", "bytes": null, "sha256": null }
+      ],
+      "notes": "Análisis de layout opcional del pipeline de GLM-OCR. Requiere el runtime Paddle; sin él, la app degrada a OCR de página completa."
+    },
+    {
+      "id": "spark-x2.5-1.7b",
+      "name": "Spark-X2.5-1.7B GGUF",
+      "kind": "llm",
+      "required": true,
+      "repo": "XHToken/Spark-X2.5-1.7B-GGUF",
+      "revision": "1f7fa33b1245c14730da39e125714ad3a327901b",
+      "license": "Apache-2.0",
+      "sourceUrl": "https://huggingface.co/XHToken/Spark-X2.5-1.7B-GGUF",
+      "defaultQuantization": "Q4_K_M",
+      "quantizations": [
+        {
+          "name": "Q4_K_M",
+          "file": "Spark-X2.5-1.7B-Q4_K_M.gguf",
+          "bytes": 1107457856,
+          "sha256": "902bde2522394954ac17821b3e5fd0df02defbc6944f122253f2580acf0503f4"
+        },
+        {
+          "name": "Q8_0",
+          "file": "Spark-X2.5-1.7B-Q8_0.gguf",
+          "bytes": 1820112704,
+          "sha256": "cd77c03185a834bb1162a4b7713520be5838058bfc54873645beff470bb24442",
+          "advanced": true
+        }
+      ],
+      "notes": "Runtime llama.cpp con soporte nativo spark2_5 (>= b10828). Servidor OpenAI-compatible en loopback."
+    }
+  ],
+  "runtime": {
+    "llamaCpp": {
+      "id": "llama-server",
+      "name": "llama.cpp server",
+      "repo": "ggml-org/llama.cpp",
+      "license": "MIT",
+      "minimumBuild": "b10828",
+      "build": "b10828",
+      "sourceUrl": "https://github.com/ggml-org/llama.cpp",
+      "assets": {
+        "aarch64-apple-darwin": {
+          "name": "llama-b10828-bin-macos-arm64.tar.gz",
+          "bytes": 11133769,
+          "archive": "tar.gz"
+        },
+        "x86_64-apple-darwin": {
+          "name": "llama-b10828-bin-macos-x64.tar.gz",
+          "bytes": 11188497,
+          "archive": "tar.gz"
+        }
+      }
+    }
+  }
+}
