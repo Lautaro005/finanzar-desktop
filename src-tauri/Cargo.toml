@@ -5,7 +5,7 @@ description = "FinanzAR Desktop — bóveda financiera local-first"
 authors = ["FinanzAR Desktop"]
 edition = "2021"
 rust-version = "1.77"
-license = "MIT"
+license = "AGPL-3.0-only"
 default-run = "finanzar-desktop"
 
 [lib]

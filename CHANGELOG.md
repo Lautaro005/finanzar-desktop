@@ -34,6 +34,27 @@ Primera versión funcional.
 - CI con ruff, pytest, build de frontend, tests de Vitest, `cargo fmt`,
   `cargo clippy` y `cargo test` para `aarch64` y `x86_64`.
 
+### Plataformas, licencia y releases
+
+- **Licencia: GNU AGPL-3.0** (antes MIT). El motivo es PyMuPDF (AGPL-3.0), que
+  forma parte del pipeline de OCR: distribuir el binario obliga a liberar el
+  código bajo AGPL. Efecto buscado: nadie puede cerrarlo ni revenderlo como
+  producto propietario. Modelos y runtimes conservan sus licencias (MIT /
+  Apache-2.0).
+- **CI multiplataforma**: los linteos y tests de Rust corren en
+  `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu` y
+  `x86_64-pc-windows-msvc` (con las dependencias de sistema de Linux).
+- **Release multiplataforma** (`release.yml`): en cada tag `v*` construye
+  instaladores para macOS (`.dmg`), Windows (`MSI` y `.exe`) y Linux
+  (`.AppImage` y `.deb`), arma el sidecar del backend con PyInstaller en cada
+  sistema y publica la release con los artefactos.
+- `scripts/build_backend.py` reemplaza la lógica del sidecar: funciona igual en
+  macOS, Linux y Windows (deja `finanzar-backend-<target>[.exe]`).
+- `scripts/build_updater_manifest.py`: genera `latest.json` **solo** con las
+  plataformas que tengan archivo y firma (una entrada sin firma rompería la
+  actualización) e informa cuáles omite.
+- `bundle.targets` pasa a `all` para que cada sistema empaquete sus formatos.
+
 ### OCR real verificado
 
 - Extra opcional `ocr` (`torch` + `torchvision` + `transformers>=5`) que habilita

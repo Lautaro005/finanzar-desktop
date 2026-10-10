@@ -1,9 +1,14 @@
 # FinanzAR Desktop
 
-Aplicación de escritorio para macOS que ordena tus finanzas personales a partir
-de **resúmenes de tarjeta de crédito en PDF**, con **OCR local**, **copiloto
+Aplicación de escritorio que ordena tus finanzas personales a partir de
+**resúmenes de tarjeta de crédito en PDF**, con **OCR local**, **copiloto
 explicable** y **memoria semántica** en tu propio equipo. Nada de tus documentos,
 movimientos o preguntas sale de la máquina.
+
+**Plataformas**: macOS es la plataforma de referencia (desarrollo y validación
+funcional). Linux y Windows se compilan y empaquetan en CI (AppImage/deb,
+MSI/`.exe`) pero **no están validados a mano** todavía: son bienvenidos los
+reportes.
 
 - **Shell de escritorio:** Tauri 2 (Rust).
 - **Interfaz:** React + TypeScript + Vite, con la identidad visual del prototipo.
@@ -96,7 +101,15 @@ El script imprime el texto reconocido, los campos con su confianza y evidencia,
 y los movimientos detectados. Debe reportar `Motor usado: glm-ocr` y
 `RESULTADO: GLM-OCR REAL OK`.
 
-## Licencias
+## Licencia
 
-Ver [`docs/licenses.md`](docs/licenses.md). Resumen: código propio MIT; GLM-OCR
-MIT; PP-DocLayoutV3 Apache-2.0; Spark-X2.5-1.7B Apache-2.0; llama.cpp MIT.
+**GNU AGPL-3.0** (ver [`LICENSE`](LICENSE)). El proyecto se distribuye bajo AGPL-3.0,
+la misma licencia de **PyMuPDF**, que forma parte del pipeline de OCR: cualquiera
+que lo redistribuya —incluso como parte de un producto— debe publicar el código
+fuente completo de su versión. No se puede cerrar ni revender como software
+propietario; para eso hace falta una licencia comercial de PyMuPDF y un acuerdo
+aparte con el autor.
+
+Los modelos y runtimes de terceros conservan **sus** licencias (MIT y
+Apache-2.0): ver [`docs/licenses.md`](docs/licenses.md). Nada de eso se ve
+afectado por la licencia del código propio.

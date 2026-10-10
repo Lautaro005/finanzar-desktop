@@ -29,7 +29,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg"],
+    "targets": "all",
     "category": "Finance",
     "shortDescription": "Finanzas personales local-first con OCR y copiloto.",
     "longDescription": "FinanzAR Desktop ordena tus finanzas a partir de resúmenes de tarjeta en PDF, con OCR local, copiloto explicable y memoria semántica en tu dispositivo.",
