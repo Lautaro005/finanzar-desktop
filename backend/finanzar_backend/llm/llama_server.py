@@ -12,6 +12,7 @@ import logging
 import os
 import platform
 import shutil
+import signal
 import socket
 import subprocess
 import time
@@ -158,3 +159,39 @@ def resolve_binary(binary_dir: Path, repo_models_dir: Path | None = None, build:
         if found:
             return found[0]
     return None
+
+
+def reap_stale_servers(data_dir: Path) -> int:
+    """Apaga los ``llama-server`` que quedaron de una corrida anterior.
+
+    Al cerrar la ventana, el shell mata el backend (SIGKILL) y sus
+    ``llama-server`` —copiloto y embeddings— quedan vivos, ocupando memoria sin
+    que nadie les hable. Al arrancar de nuevo se apagan los que apuntan a nuestro
+    directorio de datos (devuelve cuántos encontró).
+
+    En Windows no hay ``pgrep``: se omite sin ruido.
+    """
+    if platform.system() == "Windows":  # pragma: no cover - sólo Windows
+        return 0
+    pattern = f"llama-server.*{data_dir}"
+    try:
+        found = subprocess.run(
+            ["pgrep", "-f", pattern], capture_output=True, text=True, timeout=5, check=False
+        )
+    except (OSError, subprocess.SubprocessError):  # pragma: no cover - sin pgrep
+        return 0
+    killed = 0
+    for token in found.stdout.split():
+        try:
+            pid = int(token)
+        except ValueError:
+            continue
+        if pid == os.getpid():
+            continue
+        try:
+            os.kill(pid, signal.SIGTERM)
+            killed += 1
+            logger.info("Apagado un llama-server huérfano (pid %s)", pid)
+        except OSError:
+            continue
+    return killed

@@ -20,7 +20,7 @@ from ..finance.insights import refresh_insights
 from ..llm.client import LlamaClient
 from ..llm.copilot import Copilot
 from ..llm.embedder import start_embedding_server
-from ..llm.llama_server import LlamaConfig, LlamaServer, free_port, resolve_binary
+from ..llm.llama_server import LlamaConfig, LlamaServer, free_port, reap_stale_servers, resolve_binary
 from ..models.downloader import ModelDownloader
 from ..ocr.pipeline import DocumentPipeline
 from ..updates import UpdateChecker
@@ -146,7 +146,7 @@ class AppContext:
             server, embedder = started
             self.embedding_server = server
             self.embedder = embedder
-            rebuilt = self.memory.set_embedder(embedder.embed, "embeddinggemma-2-768")
+            rebuilt = self.memory.set_embedder(embedder.embed, "embeddinggemma-2-768", dim=embedder.dimension)
         if rebuilt:
             # Cambió la dimensión: los fragmentos viejos no sirven y se reindexan.
             try:
@@ -179,6 +179,9 @@ def build_context(settings: Settings | None = None, *, event_bus: EventBus | Non
     repo = Repository(db)
     engine = FinanceEngine(repo)
     memory = MemoryStore(settings.chroma_path)
+    # Si la corrida anterior se cerró de golpe, sus llama-server quedaron vivos
+    # ocupando memoria: se apagan los que apuntan a este directorio de datos.
+    reap_stale_servers(settings.data_dir)
     event_bus = event_bus or global_bus
     pipeline = DocumentPipeline(settings, repo, engine, memory, event_bus)
     downloader = ModelDownloader(settings, event_bus)

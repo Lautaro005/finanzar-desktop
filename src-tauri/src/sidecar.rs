@@ -141,9 +141,26 @@ impl Backend {
     }
 
     /// Detiene el proceso del backend.
+    ///
+    /// Primero con `SIGTERM`: el backend apaga en su cierre ordenado los
+    /// `llama-server` que arrancó (copiloto y embeddings). Con `kill()` directo
+    /// (SIGKILL) esos procesos quedaban huérfanos ocupando memoria.
     pub fn stop(&mut self) {
         match &mut self.process {
             Process::Std(child) => {
+                #[cfg(unix)]
+                {
+                    let pid = child.id().to_string();
+                    let _ = std::process::Command::new("kill")
+                        .args(["-TERM", &pid])
+                        .status();
+                    for _ in 0..30 {
+                        if matches!(child.try_wait(), Ok(Some(_))) {
+                            return;
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                    }
+                }
                 let _ = child.kill();
                 let _ = child.wait();
             }

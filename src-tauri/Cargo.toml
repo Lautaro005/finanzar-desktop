@@ -1,6 +1,6 @@
 [package]
 name = "finanzar-desktop"
-version = "0.2.6"
+version = "0.2.7"
 description = "FinanzAR Desktop — bóveda financiera local-first"
 authors = ["FinanzAR Desktop"]
 edition = "2021"

@@ -2,6 +2,28 @@
 
 Todas las versiones siguen [SemVer](https://semver.org/lang/es/).
 
+## 0.2.7 — 2026-10-10
+
+Dos defectos encontrados al verificar la ronda anterior con la app en uso.
+
+### Memoria con embeddings
+
+- Al activar **EmbeddingGemma-2**, la memoria quedaba registrada con **256
+  dimensiones** (las del embedding por hashing) aunque los vectores sean de
+  **768**: no se rearmaban las colecciones y el primer índice habría fallado por
+  dimensión. La causa era que se le pasaba a la memoria el método ligado
+  (`embedder.embed`), que no expone su dimensión; ahora la dimensión se toma de
+  la instancia (o se pasa explícita) y el cambio **rearma y reindexa** la memoria.
+
+### Cierre de la app
+
+- Al cerrar la ventana quedaban **`llama-server` huérfanos** (el copiloto y el
+  servidor de embeddings) ocupando memoria: el shell mataba el backend con
+  SIGKILL y su cierre ordenado no llegaba a correr. Ahora se le manda **SIGTERM**
+  primero —para que apague sus servidores— y recién después se lo mata; además,
+  al arrancar, el backend **apaga los `llama-server` que quedaron** de una corrida
+  anterior que apunten al mismo directorio de datos.
+
 ## 0.2.6 — 2026-10-10
 
 ### Walkthrough de primer arranque
